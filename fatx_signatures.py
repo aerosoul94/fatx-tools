@@ -54,6 +54,7 @@ class FatXSignature(object):
     def get_file_name(self):
         file_name = self.file_name
         if file_name == None:
+            # TODO: use file extension instead of classname
             if not hasattr(self.__class__, 'Unnamed_Counter'):
                 self.__class__.Unnamed_Counter = 1
             file_name = self.__class__.__name__.lower() + \
@@ -84,8 +85,23 @@ class XBESignature(FatXSignature):
         return False
 
     def parse(self):
+        # 0x104: BaseAddress
+        # 0x10c: SizeOfImage
+        # 0x110: SizeOfImageHeader
+        # 0x114: TimeDateStamp
+        # 0x14C: DebugPathName
+        # 0x150: DebugFileName
+        # 0x154: DebugUnicodeFileName
+        self.seek(0x104)
+        base_address = self.read_u32()
         self.seek(0x10c)
         self.file_length = self.read_u32()
+        self.seek(0x150)
+        debug_file_name_offset = self.read_u32()
+        self.seek(debug_file_name_offset - base_address)
+        debug_file_name = self.read_cstring()
+        self.file_name = debug_file_name.split('.exe')[0] + '.xbe'
+        
 
 class PDBSignature(FatXSignature):
     def test(self):

@@ -28,8 +28,8 @@ class FatXOrphan(FatXDirent):
             return False
 
         # validate file name length
-        if name_len not in (DIRENT_DELETED, DIRENT_NEVER_USED2)
-            and name_len > FATX_FILE_NAME_LEN:
+        if (name_len not in (DIRENT_DELETED, DIRENT_NEVER_USED2)
+            and name_len > FATX_FILE_NAME_LEN):
             return False
 
         # check if it points outside of the partition
@@ -133,6 +133,7 @@ class FatXAnalyzer:
         LOG.info('signature analysis has begun...')
         time0 = time.time()
         self.found_signatures = []
+        # TODO: be able to specify custom interval
         for cluster in range(1, self.volume.max_clusters):
             for signature in signatures:
                 test = signature(cluster, self.volume)
