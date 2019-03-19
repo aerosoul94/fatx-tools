@@ -1,14 +1,12 @@
 import struct
 
 class FatXSignature(object):
-    def __init__(self, cluster, volume):
+    def __init__(self, offset, volume):
         self.file_length = 0
         self.file_name = None
 
-        self.cluster = cluster
+        self.offset = offset
         self.volume = volume
-
-        self.cluster_offset = volume.cluster_to_physical_offset(self.cluster)
 
     def test(self):
         """ Test whether or not this cluster contains this file. """
@@ -19,8 +17,8 @@ class FatXSignature(object):
         raise NotImplementedError('Signature parsing not implemented!')
 
     def seek(self, offset, whence=0):
-        offset += self.cluster_offset
-        self.volume.infile.seek(offset, whence)
+        offset += self.offset
+        self.volume.seek_file_area(offset, whence)
 
     def read(self, size):
         return self.volume.infile.read(size)
@@ -71,9 +69,9 @@ class FatXSignature(object):
                 data = self.read(self.file_length)
                 f.write(data)
 
-    def print_stats(self):
-        print 'Found {} at 0x{:x} of length 0x{:x}'.format(self.__class__.__name__,
-                                                           self.cluster_offset,
+    def __str__(self):
+        return 'Found {} at 0x{:x} of length 0x{:x}'.format(self.__class__.__name__,
+                                                           self.offset,
                                                            self.file_length)
 
 

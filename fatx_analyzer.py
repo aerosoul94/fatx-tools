@@ -128,24 +128,23 @@ class FatXAnalyzer:
         """ List of found signatures. """
         return self.found_signatures
 
-    def perform_signature_analysis(self, signatures):
+    def perform_signature_analysis(self, interval, signatures):
         """ Searches for file signatures. """
         LOG.info('signature analysis has begun...')
         time0 = time.time()
         self.found_signatures = []
         # TODO: be able to specify custom interval
-        for cluster in range(1, self.volume.max_clusters):
+        for index in range(self.volume.length / interval):
+            offset = index * interval
             for signature in signatures:
-                test = signature(cluster, self.volume)
-                self.volume.seek_to_cluster(cluster)
+                test = signature(offset, self.volume)
+                self.volume.seek_file_area(offset)
                 if test.test():
                     test.parse()
                     self.found_signatures.append(test)
+                    print test
         time1 = time.time()
         LOG.info('analysis finished in %s', time1 - time0)
-
-        for sig in self.found_signatures:
-            sig.print_stats()
 
     def perform_orphan_analysis(self):
         """ Searches for FatXDirent structures. """

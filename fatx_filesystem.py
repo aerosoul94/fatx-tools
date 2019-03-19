@@ -226,6 +226,11 @@ class FatXVolume(object):
     def get_root(self):
         return self._root
 
+    def seek_file_area(self, offset, whence=0):
+        """ Seek relative to file_area_byte_offset """
+        offset += self.file_area_byte_offset + self.offset
+        self.infile.seek(offset, whence)
+
     def read_cluster(self, cluster):
         self.infile.seek(self.cluster_to_physical_offset(cluster))
         return self.infile.read(self.bytes_per_cluster)

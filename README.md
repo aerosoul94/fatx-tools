@@ -74,7 +74,7 @@ optional arguments:
 ##### Recover files using the orphan scanner to a path.
 `python main_recover.py -r -so -m=(0|1) -n=<index> -i=<infile> -o=<outpath>`
 ##### Recover files using the signature scanner to a path.
-`python main_recover.py -r -ss -m=(0|1) -n=<index> -i=<infile> -o=<outpath>
+`python main_recover.py -r -ss -m=(0|1) -n=<index> -i=<infile> -o=<outpath>`
 
 ## TODO
 - [ ] Create a GUI

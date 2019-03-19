@@ -41,9 +41,9 @@ def main_recover(args):
 					raise Exception("Must supply output path if recovering files! (--outputpath)")
 
 				if args.mode == MODE_XBOG:
-					analyzer.perform_signature_analysis(xog_signatures)
+					analyzer.perform_signature_analysis(args.scan_interval, xog_signatures)
 				elif args.mode == MODE_X360:
-					analyzer.perform_signature_analysis(x360_signatures)
+					analyzer.perform_signature_analysis(args.scan_interval, x360_signatures)
 
 				if args.recover:
 					for find in analyzer.found_signatures:
@@ -58,6 +58,8 @@ if __name__ == "__main__":
 	parser.add_argument("-m", "--mode", help="OS Mode (0=XBox Original,1=Xbox 360).", type=int)
 	parser.add_argument("-so", "--scan-orphans", help="Use orphan scanner.", action="store_true")
 	parser.add_argument("-ss", "--scan-signatures", help="Use signature scanner", action="store_true")
+	parser.add_argument("-ssx", "--scan-interval", help="Interval for finding signatures (default is 0x1000).",
+						type=int, default=0x1000)
 	parser.add_argument("-r", "--recover", help="Recover files to output path.", action="store_true")
 	args = parser.parse_args()
 
