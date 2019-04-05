@@ -6,14 +6,14 @@ class FatXTimeStamp(object):
     def __init__(self, time_stamp):
         self.time = time_stamp
 
-    # FIXME: year is relative to 2000 and 1980
-    # FIXME: on XOG and X360 respectively
     def __str__(self):
         return '{}/{}/{} {}:{:02d}:{:02d}'.format(
             self.month, self.day, self.year,
             self.hour, self.min, self.sec
             )
-
+    
+    # FIXME: year is relative to 2000 and 1980
+    # FIXME: on XOG and X360 respectively
     @property
     def year(self): return (((self.time & 0xFE000000) >> 25) + 1980)
     @property

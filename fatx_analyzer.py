@@ -7,7 +7,7 @@ import os
 import string
 import logging
 
-from datetime import date, datetime
+from datetime import datetime
 
 __all__ = ['FatXOrphan', 'FatXAnalyzer']
 
@@ -54,15 +54,18 @@ class FatXOrphan(FatXDirent):
             # FIXME: on XOG and X360 respectively
             #if not (2000 <= dt.year <= date.today().year):
             #    return False
-            if not (1 <= dt.month <= 12):
-                return False
-            if not (1 <= dt.day <= 31):
-                return False
-            if not (0 <= dt.hour <= 23):
-                return False
-            if not (0 <= dt.min <= 59):
-                return False
-            if not (0 <= dt.sec <= 59):
+
+            # validate date
+            try:
+                datetime(
+                    year=dt.year,
+                    month=dt.month,
+                    day=dt.day,
+                    hour=dt.hour,
+                    minute=dt.min,
+                    second=dt.sec
+                )
+            except ValueError:
                 return False
 
             return True
