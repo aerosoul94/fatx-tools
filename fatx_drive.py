@@ -4,8 +4,6 @@ class FatXDrive(object):
     ENDIAN_LITTLE = 0
     ENDIAN_BIG = 1
 
-    EndOfDrive = 0xffffffffffffffff
-
     def __init__(self, file, endian):
         self.file = file
         self.endianess = endian
@@ -22,7 +20,7 @@ class FatXDrive(object):
         return self.partitions[index-1]
 
     def print_partitions(self):
-        print '{:<6} {:<18} {}'.format("Index", "Offset", "Length")
+        print "{:<6} {:<18} {}".format("Index", "Offset", "Length")
         for i, partition in enumerate(self.partitions):
-            print '{:<6} {:016x} {:016x}'.format(i + 1, partition.offset, partition.length)
+            print "{:<6} {:016x} {:016x}".format(i + 1, partition.offset, partition.length)
         print

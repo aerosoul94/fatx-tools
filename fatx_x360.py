@@ -21,12 +21,15 @@ class X360Drive(FatXDrive):
             shell_offset = read_u32(file) * 0x200
             shell_length = read_u32(file) * 0x200
 
+            # TODO: there are actually more partitions, but I'm not sure
+            # TODO: if they're static offsets or pointed to by something.
             self.add_partition(shell_offset, shell_length)
             self.add_partition(data_offset, data_length)
         else:
-            self.add_partition(0x80000, 0x80000000)
-            self.add_partition(0x80080000, 0xA0E30000)
-            self.add_partition(0x118EB0000, 0x8000000)
+            # TODO: Handle these partitions as they currently cause exceptions to occur.
+            #self.add_partition(0x80000, 0x80000000)
+            #self.add_partition(0x80080000, 0xA0E30000)
+            #self.add_partition(0x118EB0000, 0x8000000)
             self.add_partition(0x120eb0000, 0x10000000)
 
             # compute length of data partition

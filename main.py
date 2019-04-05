@@ -20,12 +20,12 @@ def main(args):
             drive = X360Drive(infile)
 
         if args.print_drive:
-            print 'Partitions:'
+            print "Partitions:"
             drive.print_partitions()
 
         if args.print_files or args.print_partition or args.recover:
             if not args.index:
-                raise Exception('Must specify a partition index in order to print its contents (--index).')
+                raise Exception("Must specify a partition index in order to print its contents (--index).")
 
             fatx = drive.get_partition(args.index)
             fatx.mount()
@@ -37,14 +37,14 @@ def main(args):
                 root_dir = fatx.get_root()
 
                 if len(root_dir) == 0:
-                    print 'No files in this partition!'
+                    print "No files in this partition!"
                 else:
                     if args.print_files:
                         for dirent in root_dir:
-                            dirent.print_dirent('root:')
+                            dirent.print_dirent("root:")
                     if args.recover:
                         if not args.outpath:
-                            raise Exception('Must specify an output path (--output).')
+                            raise Exception("Must specify an output path (--output).")
 
                         if not os.path.exists(args.outpath):
                             os.makedirs(args.outpath)

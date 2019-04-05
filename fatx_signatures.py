@@ -10,11 +10,11 @@ class FatXSignature(object):
 
     def test(self):
         """ Test whether or not this cluster contains this file. """
-        raise NotImplementedError('Signature test not implemented!')
+        raise NotImplementedError("Signature test not implemented!")
 
     def parse(self):
         """ Fills in file length and file name. """
-        raise NotImplementedError('Signature parsing not implemented!')
+        raise NotImplementedError("Signature parsing not implemented!")
 
     def seek(self, offset, whence=0):
         offset += self.offset
@@ -70,9 +70,9 @@ class FatXSignature(object):
                 f.write(data)
 
     def __str__(self):
-        return 'Found {} at 0x{:x} of length 0x{:x}'.format(self.__class__.__name__,
-                                                           self.offset,
-                                                           self.file_length)
+        return "{} at 0x{:x} of length 0x{:x}".format(self.__class__.__name__,
+                                                      self.offset,
+                                                      self.file_length)
 
 
 class XBESignature(FatXSignature):
@@ -99,7 +99,15 @@ class XBESignature(FatXSignature):
         self.seek(debug_file_name_offset - base_address)
         debug_file_name = self.read_cstring()
         self.file_name = debug_file_name.split('.exe')[0] + '.xbe'
-        
+
+class LiveSignature(FatXSignature):
+    def test(self):
+        if self.read(4) == 'LIVE':
+            return True
+        return False
+
+    def parse(self):
+        self.file_length = 0
 
 class PDBSignature(FatXSignature):
     def test(self):
@@ -118,7 +126,21 @@ class XEXSignature(FatXSignature):
         return False
 
     def parse(self):
-        self.file_length = 0
+        self.seek(0x10)
+        security_offset = self.read_u32()
+        header_count = self.read_u32()
+        file_name_offset = None
+        for x in xrange(header_count):
+            id = self.read_u32()
+            if id == 0x000183FF:
+                file_name_offset = self.read_u32()
+            else:
+                self.read_u32()
+        self.seek(security_offset + 4)
+        self.file_length = self.read_u32()
+        if file_name_offset is not None:
+            self.seek(file_name_offset + 4)
+            self.file_name = self.read_cstring()
 
 
 # this should be handled by main module

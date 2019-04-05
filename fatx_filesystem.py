@@ -2,27 +2,30 @@ import struct
 import os
 
 class FatXTimeStamp(object):
-    __slots__ = ('year', 'month', 'day', 'hour', 'min', 'sec')
+    __slots__ = ('time')
     def __init__(self, time_stamp):
-        self.year = (((time_stamp & 0xFE000000) >> 25) + 2000)
-        self.month = ((time_stamp & 0x1E00000) >> 21)
-        self.day   = ((time_stamp & 0x1F0000) >> 16)
-        self.hour  = ((time_stamp & 0xF800) >> 11)
-        self.min   = ((time_stamp & 0x7E0) >> 5)
-        self.sec   = ((time_stamp & 0x1F))
+        self.time = time_stamp
 
-    def format(self):
+    # FIXME: year is relative to 2000 and 1980
+    # FIXME: on XOG and X360 respectively
+    def __str__(self):
         return '{}/{}/{} {}:{:02d}:{:02d}'.format(
             self.month, self.day, self.year,
             self.hour, self.min, self.sec
             )
 
-    def get_year(self): return self.year
-    def get_month(self): return self.month
-    def get_day(self): return self.day
-    def get_hour(self): return self.hour
-    def get_min(self): return self.min
-    def get_sec(self): return self.sec
+    @property
+    def year(self): return (((self.time & 0xFE000000) >> 25) + 1980)
+    @property
+    def month(self): return ((self.time & 0x1E00000) >> 21)
+    @property
+    def day(self): return ((self.time & 0x1F0000) >> 16)
+    @property
+    def hour(self): return ((self.time & 0xF800) >> 11)
+    @property
+    def min(self): return ((self.time & 0x7E0) >> 5)
+    @property
+    def sec(self): return ((self.time & 0x1F))
 
 FATX_SECTOR_SIZE    = 0x200
 FATX_PAGE_SIZE      = 0x1000
@@ -56,8 +59,12 @@ class FatXDirent:
         self.children = []
         self.parent = None
         self.volume = volume
+        self.creation_time = None
+        self.last_write_time = None
+        self.last_access_time = None
 
-        # optimization: avoid creating time stamps
+        # Optimization: Avoid creating time stamp objects
+        # Marks the end of a directory stream
         if (self.file_name_length == DIRENT_NEVER_USED or
             self.file_name_length == DIRENT_NEVER_USED2):
             return
@@ -112,7 +119,7 @@ class FatXDirent:
                 break
             cluster = fat[cluster]
 
-        file = open(path,'wb')
+        file = open(path, 'wb')
         file.write(buffer[:self.file_size])
         file.close()
 
@@ -187,16 +194,16 @@ class FatXDirent:
 
     def print_fields(self):
         def print_aligned(header, value):
-            print '{:<26} {}'.format(header, value)
+            print "{:<26} {}".format(header, value)
 
-        print_aligned('FileNameLength:', self.file_name_length)
-        print_aligned('FileName:', self.file_name)
-        print_aligned('FileSize:', '0x{:x} bytes'.format(self.file_size))
-        print_aligned('FileAttributes:', self.format_attributes())
-        print_aligned('FirstCluster', self.first_cluster)
-        print_aligned('CreationTime:', self.creation_time.format())
-        print_aligned('LastWriteTime:', self.last_write_time.format())
-        print_aligned('LastAccessTime:', self.last_access_time.format())
+        print_aligned("FileNameLength:", self.file_name_length)
+        print_aligned("FileName:", self.file_name)
+        print_aligned("FileSize:", '0x{:x} bytes'.format(self.file_size))
+        print_aligned("FileAttributes:", self.format_attributes())
+        print_aligned("FirstCluster", self.first_cluster)
+        print_aligned("CreationTime:", str(self.creation_time))
+        print_aligned("LastWriteTime:", str(self.last_write_time))
+        print_aligned("LastAccessTime:", str(self.last_access_time))
 
 class FatXVolume(object):
     def __init__(self, file, offset, length, endian):
@@ -231,12 +238,18 @@ class FatXVolume(object):
         offset += self.file_area_byte_offset + self.offset
         self.infile.seek(offset, whence)
 
+    def read_file_area(self, size):
+        return self.infile.read(size)
+
     def read_cluster(self, cluster):
         self.infile.seek(self.cluster_to_physical_offset(cluster))
         return self.infile.read(self.bytes_per_cluster)
 
     def seek_to_cluster(self, cluster):
         self.infile.seek(self.cluster_to_physical_offset(cluster))
+
+    def byte_offset_to_cluster(self, offset):
+        return (offset / self.bytes_per_cluster) + 1
 
     def byte_offset_to_physical_offset(self, offset):
         return self.offset + offset
@@ -308,7 +321,8 @@ class FatXVolume(object):
 
     def populate_dirent_stream(self, stream):
         for dirent in stream:
-            if dirent.is_directory() and not dirent.is_deleted():
+            if dirent.is_directory() and \
+                    not dirent.is_deleted(): # dirent stream is not guaranteed!
                 # TODO: don't do this with first_cluster... read from FAT!
                 dirent_stream = self.read_directory_stream( 
                     self.cluster_to_physical_offset(dirent.first_cluster))
@@ -335,19 +349,19 @@ class FatXVolume(object):
 
     def print_volume_metadata(self):
         def print_aligned(header, value=''):
-            print '{:<26} {}'.format(header, value)
+            print "{:<26} {}".format(header, value)
 
-        print_aligned('Signature:', self.signature)
-        print_aligned('SerialNumber:', self.serial_number)
-        print_aligned('SectorsPerCluster:', '{} (0x{:x} bytes)'.format(
+        print_aligned("Signature:", self.signature)
+        print_aligned("SerialNumber:", self.serial_number)
+        print_aligned("SectorsPerCluster:", "{} (0x{:x} bytes)".format(
             self.sectors_per_cluster, self.sectors_per_cluster * FATX_SECTOR_SIZE))
         print_aligned('RootDirFirstCluster:', self.root_dir_first_cluster)
         print
 
-        print_aligned('Calculated Offsets:')
-        print_aligned('PartitionOffset:', '0x{:x}'.format(self.offset))
-        print_aligned('FatByteOffset:', '0x{:x} (+0x{:x})'.format(
+        print_aligned("Calculated Offsets:")
+        print_aligned("PartitionOffset:", "0x{:x}".format(self.offset))
+        print_aligned("FatByteOffset:", "0x{:x} (+0x{:x})".format(
             self.byte_offset_to_physical_offset(self.fat_byte_offset), self.fat_byte_offset))
-        print_aligned('FileAreaByteOffset:', '0x{:x} (+0x{:x})'.format(
+        print_aligned("FileAreaByteOffset:", "0x{:x} (+0x{:x})".format(
             self.byte_offset_to_physical_offset(self.file_area_byte_offset), self.file_area_byte_offset))
         print
