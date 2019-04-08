@@ -260,8 +260,8 @@ class FatXAnalyzer:
 
         return ent
 
-    def save_roots(self):
-        with open('data.json', 'w') as outfile:
+    def save_roots(self, name):
+        with open('{}.json'.format(name), 'w') as outfile:
             partition = {}
             partition['offset'] = self.volume.offset
             partition['length'] = self.volume.length

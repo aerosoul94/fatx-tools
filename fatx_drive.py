@@ -3,7 +3,9 @@ from fatx_signatures import *
 import struct
 
 x360_signatures = [XEXSignature,
-                   PDBSignature]
+                   PDBSignature,
+                   LiveSignature,
+                   PESignature]
 
 x_signatures = [XBESignature,
                 PDBSignature]

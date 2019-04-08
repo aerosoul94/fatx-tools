@@ -1,10 +1,12 @@
 from fatx_analyzer import FatXAnalyzer
 from fatx_drive import FatXDrive, DRIVE_XBOX, DRIVE_X360, x360_signatures, x_signatures
 import argparse
+import os
 
 def main_recover(args):
     with open(args.inputfile, 'rb') as infile:
         drive = FatXDrive(infile)
+        basename = os.path.basename(args.inputfile)
 
         if drive is not None:
             volume = drive.get_partition(args.index)
@@ -18,6 +20,7 @@ def main_recover(args):
                     raise Exception("Must supply output path if recovering files! (--outputpath)")
 
                 analyzer.perform_orphan_analysis(max_clusters=args.so_length)
+                analyzer.save_roots(basename)
                 roots = analyzer.get_roots()
                 for root in roots:
                     root.print_dirent('.')

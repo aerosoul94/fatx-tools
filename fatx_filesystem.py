@@ -34,7 +34,7 @@ class FatXTimeStamp(object):
         return min
     @property
     def sec(self):
-        sec = self.time & 0x1F
+        sec = (self.time & 0x1F) * 2
         return sec
 
 class X360TimeStamp(FatXTimeStamp):
