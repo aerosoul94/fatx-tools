@@ -1,18 +1,10 @@
 from fatx_analyzer import FatXAnalyzer
-from fatx_x360 import X360Drive, x360_signatures
-from fatx_xog import XOGDrive, xog_signatures
+from fatx_drive import FatXDrive, DRIVE_XBOX, DRIVE_X360, x360_signatures, x_signatures
 import argparse
-
-MODE_XBOG = 0
-MODE_X360 = 1
 
 def main_recover(args):
     with open(args.inputfile, 'rb') as infile:
-        drive = None
-        if args.mode == MODE_XBOG:
-            drive = XOGDrive(infile)
-        elif args.mode == MODE_X360:
-            drive = X360Drive(infile)
+        drive = FatXDrive(infile)
 
         if drive is not None:
             volume = drive.get_partition(args.index)
@@ -40,11 +32,11 @@ def main_recover(args):
                 if args.recover and not args.outputpath:
                     raise Exception("Must supply output path if recovering files! (--outputpath)")
 
-                if args.mode == MODE_XBOG:
-                    analyzer.perform_signature_analysis(xog_signatures,
+                if drive.mode == DRIVE_XBOX:
+                    analyzer.perform_signature_analysis(x_signatures,
                                                         interval=args.ss_interval,
                                                         length=args.ss_length)
-                elif args.mode == MODE_X360:
+                elif drive.mode == DRIVE_X360:
                     analyzer.perform_signature_analysis(x360_signatures,
                                                         interval=args.ss_interval,
                                                         length=args.ss_length)
@@ -59,7 +51,6 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--inputfile", help="Input image file.", type=str)
     parser.add_argument("-o", "--outputpath", help="Output directory", type=str)
     parser.add_argument("-n", "--index", help="Partition index.", type=int)
-    parser.add_argument("-m", "--mode", help="OS Mode (0=XBox Original,1=Xbox 360).", type=int)
     parser.add_argument("-r", "--recover", help="Recover files to output path.", action="store_true")
 
     parser.add_argument("-so", "--scan-orphans", help="Use orphan scanner.", action="store_true")

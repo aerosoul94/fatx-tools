@@ -6,8 +6,9 @@ import time
 import os
 import string
 import logging
+import json
 
-from datetime import datetime
+from datetime import date, datetime
 
 __all__ = ['FatXOrphan', 'FatXAnalyzer']
 
@@ -52,13 +53,15 @@ class FatXOrphan(FatXDirent):
 
             # FIXME: year is relative to 2000 and 1980
             # FIXME: on XOG and X360 respectively
-            #if not (2000 <= dt.year <= date.today().year):
-            #    return False
+            year = dt.year
+
+            if not (2000 <= year <= date.today().year):
+                return False
 
             # validate date
             try:
                 datetime(
-                    year=dt.year,
+                    year=year,
                     month=dt.month,
                     day=dt.day,
                     hour=dt.hour,
@@ -109,9 +112,21 @@ class FatXOrphan(FatXDirent):
                 dirent.rescue(whole_path)
         else:
             try:
+                bufsize = 0x100000
+                remains = self.file_size
+
                 with open(whole_path, 'wb') as f:
-                    f.write(self.volume.infile.read(self.file_size))
-            except (OSError, IOError):
+                    while True:
+                        if bufsize < remains:
+                            read = bufsize
+                            remains -= bufsize
+                        else:
+                            read = remains
+                        buf = self.volume.infile.read(read)
+                        f.write(buf)
+                        if read < bufsize:
+                            break
+            except (OSError, IOError, OverflowError):
                 LOG.exception('Failed to create file: %s', whole_path)
 
 
@@ -145,7 +160,7 @@ class FatXAnalyzer:
         # PAGE_SIZE    = 0x1000  # moderate speed, less effective
         # CLUSTER_SIZE = 0x4000  # high speed, least effective
         if interval not in (1, 0x200, 0x1000, 0x4000):
-            return ValueError("Valid intervals are 1, 0x20, 0x1000, or 0x4000.")
+            return ValueError("Valid intervals are 1, 0x200, 0x1000, or 0x4000.")
 
         if (length == 0 or length > self.volume.length):
             length = self.volume.length
@@ -185,6 +200,8 @@ class FatXAnalyzer:
             max_clusters == 0):
             max_clusters = self.volume.max_clusters
 
+        ignored = set(['\x00', '\x01', '\xff'])
+
         for cluster in range(1, max_clusters):
             self.current_block = cluster
             cache = self.volume.read_cluster(cluster)
@@ -195,7 +212,7 @@ class FatXAnalyzer:
                 # Optimization: Don't bother reading if file_name_length
                 # is DIRENT_NEVER_USED or DIRENT_NEVER_USED2
                 # Also avoid 1 character file_name_length
-                if cache[offset] in ('\x00', '\x01', '\xff'):
+                if cache[offset] in ignored:
                     continue
 
                 dirent = FatXOrphan(cache[offset:offset+0x40], self.volume)
@@ -223,3 +240,34 @@ class FatXAnalyzer:
         for orphan in self.orphanage:
             if orphan.parent is None:
                 self.roots.append(orphan)
+
+    def save_dirent(self, root):
+        ent = {}
+        ent['cluster'] = root.cluster
+        ent['filename'] = root.file_name
+        ent['filenamelen'] = root.file_name_length
+        ent['filesize'] = root.file_size
+        ent['attributes'] = root.file_attributes
+        ent['firstcluster'] = root.first_cluster
+        ent['creationtime'] = root.creation_time_i
+        ent['lastwritetime'] = root.last_write_time_i
+        ent['lastaccesstime'] = root.last_access_time_i
+
+        if root.is_directory():
+            ent['children'] = []
+            for child in root.children:
+                ent['children'].append(self.save_dirent(child))
+
+        return ent
+
+    def save_roots(self):
+        with open('data.json', 'w') as outfile:
+            partition = {}
+            partition['offset'] = self.volume.offset
+            partition['length'] = self.volume.length
+            partition['roots'] = []
+            for root in self.roots:
+                partition['roots'].append(self.save_dirent(root))
+            json.dump(partition, outfile, indent=1)
+
+

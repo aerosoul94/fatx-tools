@@ -11,21 +11,44 @@ class FatXTimeStamp(object):
             self.month, self.day, self.year,
             self.hour, self.min, self.sec
             )
-    
-    # FIXME: year is relative to 2000 and 1980
-    # FIXME: on XOG and X360 respectively
+
     @property
-    def year(self): return (((self.time & 0xFE000000) >> 25) + 1980)
+    def year(self):
+        year = (self.time & 0xFE000000) >> 25
+        return year
     @property
-    def month(self): return ((self.time & 0x1E00000) >> 21)
+    def month(self):
+        month = (self.time & 0x1E00000) >> 21
+        return month
     @property
-    def day(self): return ((self.time & 0x1F0000) >> 16)
+    def day(self):
+        day = (self.time & 0x1F0000) >> 16
+        return day
     @property
-    def hour(self): return ((self.time & 0xF800) >> 11)
+    def hour(self):
+        hour = (self.time & 0xF800) >> 11
+        return hour
     @property
-    def min(self): return ((self.time & 0x7E0) >> 5)
+    def min(self):
+        min = (self.time & 0x7E0) >> 5
+        return min
     @property
-    def sec(self): return ((self.time & 0x1F))
+    def sec(self):
+        sec = self.time & 0x1F
+        return sec
+
+class X360TimeStamp(FatXTimeStamp):
+    @property
+    def year(self):
+        year = (((self.time & 0xFE000000) >> 25) + 1980)
+        return year
+
+class XTimeStamp(FatXTimeStamp):
+    @property
+    def year(self):
+        year = (((self.time & 0xFE000000) >> 25) + 2000)
+        return year
+
 
 FATX_SECTOR_SIZE    = 0x200
 FATX_PAGE_SIZE      = 0x1000
@@ -69,9 +92,10 @@ class FatXDirent:
             self.file_name_length == DIRENT_NEVER_USED2):
             return
 
-        self.creation_time = FatXTimeStamp(self.creation_time_i)
-        self.last_write_time = FatXTimeStamp(self.last_write_time_i)
-        self.last_access_time = FatXTimeStamp(self.last_access_time_i)
+        ts = volume.ts_format
+        self.creation_time = ts(self.creation_time_i)
+        self.last_write_time = ts(self.last_write_time_i)
+        self.last_access_time = ts(self.last_access_time_i)
 
         if self.file_name_length == DIRENT_DELETED:
             self.file_name = self.file_name.split('\xff')[0]
@@ -178,17 +202,17 @@ class FatXDirent:
         return attributes
 
     def print_dirent(self, root_path):
-        if self.is_deleted():
-            return
+        whole_path = root_path + '/' + self.file_name
 
-        if self.is_directory():
+        if self.is_deleted():
+            prefix = 'DEL  '
+        elif self.is_directory():
             prefix = 'DIR  '
         else:
             prefix = 'FILE '
 
-        whole_path = root_path + '/' + self.file_name
         print prefix + whole_path
-        if self.is_directory():
+        if self.is_directory() and not self.is_deleted():
             for child in self.children:
                 child.print_dirent(whole_path)
 
@@ -206,13 +230,14 @@ class FatXDirent:
         print_aligned("LastAccessTime:", str(self.last_access_time))
 
 class FatXVolume(object):
-    def __init__(self, file, offset, length, endian):
+    def __init__(self, file, offset, length, byteorder):
         self.infile = file
         self.offset = offset
         self.length = length
-        self.endian_fmt = '<' if endian == 0 else '>'
+        self.endian_fmt = byteorder
         self.FATX_FORMAT = self.endian_fmt + 'LLLL'
         self.DIRENT_FORMAT = self.endian_fmt + 'BB42sLLLLL'
+        self.ts_format = XTimeStamp if byteorder == '<' else X360TimeStamp
 
     def mount(self):
         # read volume metadata
