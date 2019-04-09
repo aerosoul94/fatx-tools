@@ -117,7 +117,7 @@ class FatXOrphan(FatXDirent):
 
                 with open(whole_path, 'wb') as f:
                     while True:
-                        if bufsize < remains:
+                        if bufsize <= remains:
                             read = bufsize
                             remains -= bufsize
                         else:
