@@ -116,16 +116,11 @@ class FatXOrphan(FatXDirent):
                 remains = self.file_size
 
                 with open(whole_path, 'wb') as f:
-                    while True:
-                        if bufsize <= remains:
-                            read = bufsize
-                            remains -= bufsize
-                        else:
-                            read = remains
+                    while remains > 0:
+                        read = min(remains, bufsize)
+                        remains -= read
                         buf = self.volume.infile.read(read)
                         f.write(buf)
-                        if read < bufsize:
-                            break
             except (OSError, IOError, OverflowError):
                 LOG.exception('Failed to create file: %s', whole_path)
 
