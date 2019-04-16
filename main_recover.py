@@ -1,7 +1,14 @@
+import argparse
+import sys
+import os
+import logging
+
 from fatx_analyzer import FatXAnalyzer
 from fatx_drive import FatXDrive, DRIVE_XBOX, DRIVE_X360, x360_signatures, x_signatures
-import argparse
-import os
+
+
+LOG = logging.getLogger('FATX')
+
 
 def main_recover(args):
     with open(args.inputfile, 'rb') as infile:
@@ -55,6 +62,7 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--outputpath", help="Output directory", type=str)
     parser.add_argument("-n", "--index", help="Partition index.", type=int)
     parser.add_argument("-r", "--recover", help="Recover files to output path.", action="store_true")
+    parser.add_argument("-v", "--verbosity", help="Verbose level.", type=str, default="NOTSET")
 
     parser.add_argument("-so", "--scan-orphans", help="Use orphan scanner.", action="store_true")
     parser.add_argument("-son", "--so-length", help="Number of clusters to search through.",
@@ -67,5 +75,23 @@ if __name__ == "__main__":
                         type=lambda x: int(x, 0), default=0)
 
     args = parser.parse_args()
+
+    log_verbosity = [v for k, v in logging.__dict__.items() if k.startswith(args.verbosity.upper())][0]
+
+    _stream = logging.StreamHandler(sys.stdout)
+    _stream.setLevel(logging.INFO)
+    _stream.setFormatter(logging.Formatter('%(levelname).4s: %(message)s'))
+
+    if log_verbosity != logging.NOTSET:
+        _file = logging.FileHandler('log.txt', 'w', 'utf-8')
+        _file.setLevel(logging.DEBUG)
+        _file.setFormatter(
+            logging.Formatter('%(module)s::%(funcName)s::%(lineno)d %(levelname).4s %(asctime)s - %(message)s'))
+        LOG.setLevel(log_verbosity)
+        LOG.addHandler(_file)
+    else:
+        LOG.setLevel(logging.INFO)
+
+    LOG.addHandler(_stream)
 
     main_recover(args)

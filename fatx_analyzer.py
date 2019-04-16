@@ -20,24 +20,8 @@ class FatXOrphan(FatXDirent):
     #@profile
     def is_valid(self):
         """ Checks if this recovered dirent is actually valid. """
-        name_len = self.file_name_length
-
-        # DIRENT_NEVER_USED is never set by the kernel
-        # DIRENT_NEVER_USED2 is set during initialization
-        # and after a format
-        if name_len == DIRENT_NEVER_USED:
-            return False
-
-        # FILE or DIR
-        if (self.file_attributes != 0x00 and
-            self.file_attributes != 0x10):
-            return False
-
-        # validate file name length
-        if (name_len not in (DIRENT_DELETED, DIRENT_NEVER_USED2)
-            and name_len > FATX_FILE_NAME_LEN):
-            return False
-
+        # TODO: some valid dirents have invalid cluster indexes
+        # TODO: warn user that the file will undoubtedly be corrupted
         # check if it points outside of the partition
         if self.first_cluster > self.volume.max_clusters:
             return False
@@ -51,11 +35,9 @@ class FatXOrphan(FatXDirent):
                 # There has to be a date defined.
                 return False
 
-            # FIXME: year is relative to 2000 and 1980
-            # FIXME: on XOG and X360 respectively
             year = dt.year
 
-            if not (2000 <= year <= date.today().year):
+            if not (year <= date.today().year):
                 return False
 
             # validate date
@@ -123,6 +105,7 @@ class FatXOrphan(FatXDirent):
                         f.write(buf)
             except (OSError, IOError, OverflowError):
                 LOG.exception('Failed to create file: %s', whole_path)
+        self._set_ts(whole_path)
 
 
 class FatXAnalyzer:
@@ -145,6 +128,10 @@ class FatXAnalyzer:
     def get_valid_sigs(self):
         """ List of found signatures. """
         return self.found_signatures
+
+    def perform_volume_analysis(self, interval=0x1000):
+
+        pass
 
     def perform_signature_analysis(self, signatures, interval=0x200, length=0):
         """ Searches for file signatures. """
@@ -171,7 +158,7 @@ class FatXAnalyzer:
                 if test.test():
                     test.parse()
                     self.found_signatures.append(test)
-                    print(test)
+                    LOG.info(str(test))
         time1 = time.time()
         LOG.info('analysis finished in %s', time1 - time0)
 
@@ -181,11 +168,15 @@ class FatXAnalyzer:
         time0 = time.time()
         self.recover_orphans(max_clusters)
         time1 = time.time()
-        LOG.info('analysis finished in %s seconds. Linking orphans...', time1 - time0)
+        LOG.info('Linking orphans...')
 
         # give them a home
+        time2 = time.time()
         self.link_orphans()
+        time3 = time.time()
         LOG.info('and done. :)')
+        LOG.info('Time to analyze partition: %i seconds', time1 - time0)
+        LOG.info('Time to rebuild directories: %i seconds', time3 - time2)
 
     # TODO: optimize file reading
     def recover_orphans(self, max_clusters=0):
@@ -195,8 +186,6 @@ class FatXAnalyzer:
             max_clusters == 0):
             max_clusters = self.volume.max_clusters
 
-        ignored = set(['\x00', '\x01', '\xff'])
-
         for cluster in range(1, max_clusters):
             self.current_block = cluster
             cache = self.volume.read_cluster(cluster)
@@ -204,15 +193,26 @@ class FatXAnalyzer:
             for x in range(256):
                 offset = x * 0x40
 
-                # Optimization: Don't bother reading if file_name_length
-                # is DIRENT_NEVER_USED or DIRENT_NEVER_USED2
-                # Also avoid 1 character file_name_length
-                if cache[offset] in ignored:
+                name_len = cache[offset]
+
+                # Optimization: Try and avoid creating objects
+                # file attributes must be file or directory
+                if cache[offset+1] not in ('\x00', '\x10'):
+                    continue
+
+                # DIRENT_NEVER_USED and DIRENT_NEVER_USED2
+                if name_len in ('\x00', '\x01', '\xff'):
+                    continue
+
+                # if file is not deleted, ensure name length is less than max
+                if name_len != '\xE5' and name_len > '\x2A':
                     continue
 
                 dirent = FatXOrphan(cache[offset:offset+0x40], self.volume)
 
                 if dirent.is_valid():
+                    LOG.info("%#x: %s (cluster %i)", self.volume.cluster_to_physical_offset(cluster),
+                                                     dirent.file_name, cluster)
                     dirent.set_cluster(cluster)
                     orphans.append(dirent)
 
@@ -221,6 +221,7 @@ class FatXAnalyzer:
     def find_children(self, parent):
         """ Find children for this directory. """
         for orphan in self.orphanage:
+            # if orphan.cluster is in parent.clusters_list
             if orphan.cluster == parent.first_cluster:
                 parent.add_child(orphan)
                 orphan.set_parent(parent)
@@ -237,7 +238,8 @@ class FatXAnalyzer:
                 self.roots.append(orphan)
 
     def save_dirent(self, root):
-        ent = {}
+        ent = dict()
+        ent['offset'] = self.volume.cluster_to_physical_offset(root.cluster)
         ent['cluster'] = root.cluster
         ent['filename'] = root.file_name
         ent['filenamelen'] = root.file_name_length
@@ -257,7 +259,8 @@ class FatXAnalyzer:
 
     def save_roots(self, name):
         with open('{}.json'.format(name), 'w') as outfile:
-            partition = {}
+            partition = dict()
+            # partition['chainmap'] = self.volume.file_allocation_table
             partition['offset'] = self.volume.offset
             partition['length'] = self.volume.length
             partition['roots'] = []

@@ -1,5 +1,7 @@
 import struct
 import os
+import time
+from datetime import datetime
 
 class FatXTimeStamp(object):
     __slots__ = ('time')
@@ -7,10 +9,8 @@ class FatXTimeStamp(object):
         self.time = time_stamp
 
     def __str__(self):
-        return '{}/{}/{} {}:{:02d}:{:02d}'.format(
-            self.month, self.day, self.year,
-            self.hour, self.min, self.sec
-            )
+        return str(datetime(year=self.year, month=self.month, day=self.day,
+                            hour=self.hour, minute=self.min, second=self.sec))
 
     @property
     def year(self):
@@ -130,13 +130,46 @@ class FatXDirent:
             return True
         return False
 
+    def get_path(self):
+        ancestry = []
+        if self.parent is not None:
+            parent = self.parent
+            while parent is not None:
+                ancestry.append(parent.file_name)
+                parent = parent.parent
+
+        return '/'.join(reversed(ancestry))
+
+    def get_full_path(self):
+        return '/'.join([self.get_path(), self.file_name])
+
     ###########################################
     # TODO: need to move these to FatXVolume
     # TODO: support files marked as deleted
+    def _set_ts(self, path):
+        ats = self.last_access_time
+        mts = self.last_write_time
+        atime = datetime(year=ats.year,
+                         month=ats.month,
+                         day=ats.day,
+                         hour=ats.hour,
+                         minute=ats.min,
+                         second=ats.sec)
+        mtime = datetime(year=mts.year,
+                         month=mts.month,
+                         day=mts.day,
+                         hour=mts.hour,
+                         minute=mts.min,
+                         second=mts.sec)
+
+        os.utime(path, (time.mktime(atime.timetuple()),
+                        time.mktime(mtime.timetuple())))
+
     def _write_file(self, path):
         fat = self.volume.file_allocation_table
         cluster = self.first_cluster
         buffer = ''
+        # TODO: handle invalid clusters
         while True:
             buffer += self.volume.read_cluster(cluster)
             if cluster >= (0xfff0 if self.volume.fat16x else 0xfffffff0):
@@ -146,6 +179,11 @@ class FatXDirent:
         file = open(path, 'wb')
         file.write(buffer[:self.file_size])
         file.close()
+
+        try:
+            self._set_ts(path)
+        except ValueError:
+            print 'Failed to set timestamps.'
 
     def _write_dir(self, path):
         if not os.path.exists(path):
@@ -176,6 +214,7 @@ class FatXDirent:
             self.write(whole_path)
             for dirent in self.children:
                 dirent.recover(whole_path, undelete)
+            self._set_ts(whole_path)
         else:
             self.write(whole_path)
             # dump regular file
@@ -230,8 +269,9 @@ class FatXDirent:
         print_aligned("LastAccessTime:", str(self.last_access_time))
 
 class FatXVolume(object):
-    def __init__(self, file, offset, length, byteorder):
+    def __init__(self, file, name, offset, length, byteorder):
         self.infile = file
+        self.name = name
         self.offset = offset
         self.length = length
         self.endian_fmt = byteorder
@@ -254,6 +294,9 @@ class FatXVolume(object):
 
         # for each dirent in root, populate children
         self.populate_dirent_stream(self._root)
+
+    def is_valid_cluster(self, cluster):
+        return (cluster - 1) < self.max_clusters
 
     def get_root(self):
         return self._root
@@ -305,9 +348,14 @@ class FatXVolume(object):
     def get_cluster_chain_map(self, first_cluster):
         chain = []
         cluster = first_cluster
+        chain.append(first_cluster)
         max_cluster = (0xfff0 if self.fat16x else 0xfffffff0)
-        while self.file_allocation_table[cluster] <= max_cluster:
-            chain.append(self.file_allocation_table[cluster])
+        fat_entry = self.file_allocation_table[cluster]
+        while fat_entry <= max_cluster and fat_entry != 0:
+            # should check that its not reserved, freed,
+            # and less than max_clusters for volume.
+            chain.append(fat_entry)
+            fat_entry = self.file_allocation_table[fat_entry]
         return chain
 
     def read_file_allocation_table(self):
@@ -347,14 +395,16 @@ class FatXVolume(object):
     def populate_dirent_stream(self, stream):
         for dirent in stream:
             if dirent.is_directory() and \
-                    not dirent.is_deleted(): # dirent stream is not guaranteed!
-                # TODO: don't do this with first_cluster... read from FAT!
-                dirent_stream = self.read_directory_stream( 
-                    self.cluster_to_physical_offset(dirent.first_cluster))
+                    not dirent.is_deleted():  # dirent stream not guaranteed if deleted.
+                chain_map = self.get_cluster_chain_map(dirent.first_cluster)
 
-                dirent.add_dirent_stream_to_this_directory(dirent_stream)
+                for cluster in chain_map:
+                    dirent_stream = self.read_directory_stream(
+                        self.cluster_to_physical_offset(cluster))
 
-                self.populate_dirent_stream(dirent_stream)
+                    dirent.add_dirent_stream_to_this_directory(dirent_stream)
+                    # TODO: populate_children()
+                    self.populate_dirent_stream(dirent_stream)
 
     def read_directory_stream(self, offset):
         stream = []
