@@ -154,8 +154,11 @@ class FatXAnalyzer:
             offset = index * interval
             for signature in signatures:
                 test = signature(offset, self.volume)
+                # seek to test
                 self.volume.seek_file_area(offset)
                 if test.test():
+                    # seek to parse
+                    self.volume.seek_file_area(offset)
                     test.parse()
                     self.found_signatures.append(test)
                     LOG.info(str(test))
