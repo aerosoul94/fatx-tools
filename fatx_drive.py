@@ -8,6 +8,7 @@ x360_signatures = [XEXSignature,
                    PESignature]
 
 x_signatures = [XBESignature,
+                PESignature,
                 PDBSignature]
 
 DRIVE_XBOX = 0
@@ -102,7 +103,7 @@ class FatXDrive(object):
 
 
     def add_partition(self, name, offset, length):
-        #TODO: support other file systems
+        #TODO: support other XBOX file systems?
         fatx = FatXVolume(self.file, name, offset, length, self.byteorder)
         self.partitions.append(fatx)
 
@@ -110,7 +111,7 @@ class FatXDrive(object):
         return self.partitions[index-1]
 
     def print_partitions(self):
-        print "{:<6} {:<18} {}".format("Index", "Offset", "Length")
+        print("{:<6} {:<18} {}".format("Index", "Offset", "Length"))
         for i, partition in enumerate(self.partitions):
-            print "{:<6} {:016x} {:016x}".format(i + 1, partition.offset, partition.length)
-        print
+            print ("{:<6} {:016x} {:016x}".format(i + 1, partition.offset, partition.length))
+        print()

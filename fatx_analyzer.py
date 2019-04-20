@@ -1,7 +1,4 @@
-from __future__ import print_function
-from fatx_filesystem import (FatXDirent,
-                            DIRENT_DELETED, DIRENT_NEVER_USED,
-                            DIRENT_NEVER_USED2, FATX_FILE_NAME_LEN)
+from fatx_filesystem import FatXDirent, VALID_FILE_ATTRIBUTES
 import time
 import os
 import string
@@ -12,7 +9,7 @@ from datetime import date, datetime
 
 __all__ = ['FatXOrphan', 'FatXAnalyzer']
 
-VALID_CHARS = set(string.ascii_letters + string.digits + '!#$%&\'()-.@[]^_`{}~ ')
+VALID_CHARS = set(string.ascii_letters + string.digits + '!#$%&\'()-.@[]^_`{}~ ' + '\xff')
 LOG = logging.getLogger('FATX.Analyzer')
 
 class FatXOrphan(FatXDirent):
@@ -26,9 +23,12 @@ class FatXOrphan(FatXDirent):
         if self.first_cluster > self.volume.max_clusters:
             return False
 
-        # validate file name
-        if not all(c in VALID_CHARS for c in self.file_name):
+        # validate file name bytes
+        if not all(c in VALID_CHARS for c in self.file_name_bytes):
             return False
+
+        def is_valid_attributes(attr):
+            return (attr & ~VALID_FILE_ATTRIBUTES) == 0
 
         def is_valid_date(dt):
             if dt is None:
@@ -41,6 +41,7 @@ class FatXOrphan(FatXDirent):
                 return False
 
             # validate date
+            # TODO: check its not from the future
             try:
                 datetime(
                     year=year,
@@ -63,20 +64,15 @@ class FatXOrphan(FatXDirent):
 
         return True
 
-    def add_child(self, child):
-        """ This child belongs to this dirent. """
-        if not self.is_directory():
-            raise Exception("Only directories can have children!")
-
-        self.children.append(child)
-
-    def set_parent(self, parent):
-        """ This dirent belongs to this parent dirent. """
-        self.parent = parent
-
     def set_cluster(self, cluster):
         """ This dirent belongs to this cluster. """
         self.cluster = cluster
+
+    def set_offset(self, offset):
+        self.offset = offset
+
+    def rescue_dir(self, path):
+        pass
 
     def rescue(self, path):
         """ This dumps without relying on the FAT. """
@@ -105,15 +101,20 @@ class FatXOrphan(FatXDirent):
                         f.write(buf)
             except (OSError, IOError, OverflowError):
                 LOG.exception('Failed to create file: %s', whole_path)
-        self._set_ts(whole_path)
+        try:
+            self._set_ts(whole_path)
+        except:
+            # TODO: try and fix these errors...
+            LOG.exception("Failed to set timestamp.")
 
 
 class FatXAnalyzer:
     """ Analyzes a FatX partition for deleted files. """
     def __init__(self, volume):
         self.volume = volume
-        self.roots = []     # List[FatXOrphan]
-        self.orphanage = [] # List[FatXOrphan]
+        self.roots = []      # List[FatXOrphan]
+        self.orphanage = []  # List[FatXOrphan]
+        self.found_signatures = []
         self.current_block = 0
 
     # TODO: add constructor for finding files with corrupted FatX volume metadata
@@ -130,7 +131,6 @@ class FatXAnalyzer:
         return self.found_signatures
 
     def perform_volume_analysis(self, interval=0x1000):
-
         pass
 
     def perform_signature_analysis(self, signatures, interval=0x200, length=0):
@@ -144,11 +144,10 @@ class FatXAnalyzer:
         if interval not in (1, 0x200, 0x1000, 0x4000):
             return ValueError("Valid intervals are 1, 0x200, 0x1000, or 0x4000.")
 
-        if (length == 0 or length > self.volume.length):
+        if length == 0 or length > self.volume.length:
             length = self.volume.length
 
         time0 = time.time()
-        self.found_signatures = []
         for index in xrange(length / interval):
             self.current_block = index
             offset = index * interval
@@ -167,7 +166,7 @@ class FatXAnalyzer:
 
     def perform_orphan_analysis(self, max_clusters=0):
         """ Searches for FatXDirent structures. """
-        LOG.info('orphan analysis has begun...')
+        LOG.info('Orphan analysis has begun...')
         time0 = time.time()
         self.recover_orphans(max_clusters)
         time1 = time.time()
@@ -214,19 +213,36 @@ class FatXAnalyzer:
                 dirent = FatXOrphan(cache[offset:offset+0x40], self.volume)
 
                 if dirent.is_valid():
-                    LOG.info("%#x: %s (cluster %i)", self.volume.cluster_to_physical_offset(cluster),
-                                                     dirent.file_name, cluster)
+                    offset = self.volume.cluster_to_physical_offset(cluster) + offset
+                    LOG.info("%#x: %s (cluster %i)", offset, dirent.file_name, cluster)
                     dirent.set_cluster(cluster)
+                    dirent.set_offset(offset)
                     orphans.append(dirent)
 
         self.orphanage = orphans
 
     def find_children(self, parent):
         """ Find children for this directory. """
+        chain_map = self.volume.get_cluster_chain(parent.first_cluster)
+        # chain map should not have any free clusters
+        # should be done by get_cluster_chain_map()
+        ''' 
+        TODO: do our best to detect invalid chains
+         check if directories do not have more than 0x40000 dirents
+        '''
+        '''
+        for cluster in chain_map:
+            if cluster == 0:
+                chain_map = [parent.first_cluster]
+        '''
         for orphan in self.orphanage:
             # if orphan.cluster is in parent.clusters_list
-            if orphan.cluster == parent.first_cluster:
+            if orphan.cluster in chain_map:
                 parent.add_child(orphan)
+                # TODO: maybe do away with 'parent' attribute?
+                # TODO: we need parent for get_full_path() though
+                if orphan.has_parent():
+                    LOG.warning('%s already has a parent!', orphan.file_name)
                 orphan.set_parent(parent)
 
     def link_orphans(self):
@@ -242,7 +258,7 @@ class FatXAnalyzer:
 
     def save_dirent(self, root):
         ent = dict()
-        ent['offset'] = self.volume.cluster_to_physical_offset(root.cluster)
+        ent['offset'] = root.offset
         ent['cluster'] = root.cluster
         ent['filename'] = root.file_name
         ent['filenamelen'] = root.file_name_length

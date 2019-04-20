@@ -10,50 +10,57 @@ from fatx_drive import FatXDrive, DRIVE_XBOX, DRIVE_X360, x360_signatures, x_sig
 LOG = logging.getLogger('FATX')
 
 
-def main_recover(args):
-    with open(args.inputfile, 'rb') as infile:
+def main_recover(arg):
+    with open(arg.inputfile, 'rb') as infile:
         drive = FatXDrive(infile)
-        basename = os.path.basename(args.inputfile)
+        basename = os.path.basename(arg.inputfile)
 
         if drive is not None:
-            volume = drive.get_partition(args.index)
+            volume = drive.get_partition(arg.index)
             volume.mount()
             analyzer = FatXAnalyzer(volume)
 
             # orphan scanner will look for anything that looks
             # like a valid DIRENT entry for complete file info
-            if args.scan_orphans:
-                if args.recover and not args.outputpath:
+            if arg.scan_orphans:
+                if arg.recover and not arg.outputpath:
                     raise Exception("Must supply output path if recovering files! (--outputpath)")
 
-                analyzer.perform_orphan_analysis(max_clusters=args.so_length)
+                analyzer.perform_orphan_analysis(max_clusters=arg.so_length)
                 analyzer.save_roots(basename)
                 roots = analyzer.get_roots()
                 for root in roots:
                     root.print_dirent('.')
 
-                if args.recover:
+                if arg.recover:
+                    if not os.path.exists(args.outputpath):
+                        os.mkdir(args.outputpath)
+
                     for root in roots:
-                        root.rescue(args.outputpath)
+                        root_dir = args.outputpath + '/cluster' + str(root.cluster)
+                        if not os.path.exists(root_dir):
+                            os.mkdir(root_dir)
+
+                        root.rescue(root_dir)
 
             # signature scanner will go through blocks of data
             # testing various signatures to see if they match
-            if args.scan_signatures:
-                if args.recover and not args.outputpath:
+            if arg.scan_signatures:
+                if arg.recover and not arg.outputpath:
                     raise Exception("Must supply output path if recovering files! (--outputpath)")
 
                 if drive.mode == DRIVE_XBOX:
                     analyzer.perform_signature_analysis(x_signatures,
-                                                        interval=args.ss_interval,
-                                                        length=args.ss_length)
+                                                        interval=arg.ss_interval,
+                                                        length=arg.ss_length)
                 elif drive.mode == DRIVE_X360:
                     analyzer.perform_signature_analysis(x360_signatures,
-                                                        interval=args.ss_interval,
-                                                        length=args.ss_length)
+                                                        interval=arg.ss_interval,
+                                                        length=arg.ss_length)
 
-                if args.recover:
+                if arg.recover:
                     for find in analyzer.found_signatures:
-                        find.recover(args.outputpath)
+                        find.recover(arg.outputpath)
 
 
 if __name__ == "__main__":
@@ -62,6 +69,10 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--outputpath", help="Output directory", type=str)
     parser.add_argument("-n", "--index", help="Partition index.", type=int)
     parser.add_argument("-r", "--recover", help="Recover files to output path.", action="store_true")
+    ''' TODO: 
+     - Only print the files found if this flag is set.
+     - Don't use log file. Instead have user redirect stdout to file.
+    '''
     parser.add_argument("-v", "--verbosity", help="Verbose level.", type=str, default="NOTSET")
 
     parser.add_argument("-so", "--scan-orphans", help="Use orphan scanner.", action="store_true")

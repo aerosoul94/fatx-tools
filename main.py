@@ -2,43 +2,45 @@ from fatx_drive import FatXDrive
 import argparse
 import os
 
-def main(args):
+
+def main(arg):
     # TODO: have the option to specify a custom range
-    with open(args.inputfile, 'rb') as infile:
+    with open(arg.inputfile, 'rb') as infile:
         drive = FatXDrive(infile)
 
-        if args.print_drive:
-            print "Partitions:"
+        if arg.print_drive:
+            print("Partitions:")
             drive.print_partitions()
 
-        if args.print_files or args.print_partition or args.recover:
-            if not args.index:
+        if arg.print_files or arg.print_partition or arg.recover:
+            if not arg.index:
                 raise Exception("Must specify a partition index in order to print its contents (--index).")
 
-            fatx = drive.get_partition(args.index)
+            fatx = drive.get_partition(arg.index)
             fatx.mount()
 
-            if args.print_partition:
+            if arg.print_partition:
                 fatx.print_volume_metadata()
 
-            if args.print_files or args.recover:
+            if arg.print_files or arg.recover:
                 root_dir = fatx.get_root()
 
                 if len(root_dir) == 0:
-                    print "No files in this partition!"
+                    print("No files in this partition!")
                 else:
-                    if args.print_files:
+                    if arg.print_files:
                         for dirent in root_dir:
                             dirent.print_dirent("root:")
-                    if args.recover:
-                        if not args.outpath:
+                    if arg.recover:
+                        if not arg.outpath:
                             raise Exception("Must specify an output path (--output).")
 
-                        if not os.path.exists(args.outpath):
-                            os.makedirs(args.outpath)
+                        if not os.path.exists(arg.outpath):
+                            os.makedirs(arg.outpath)
 
                         for dirent in root_dir:
-                            dirent.recover(args.outpath, args.undelete)
+                            dirent.recover(arg.outpath, arg.undelete)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Xbox 360 and Xbox Original drive utilities.")

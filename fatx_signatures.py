@@ -1,9 +1,11 @@
 import struct
 
+
 class FatXSignature(object):
     def __init__(self, offset, volume):
         self.length = 0
         self.name = None
+        self.endian = volume.endian_fmt
 
         self._offset = offset
         self._volume = volume
@@ -24,34 +26,40 @@ class FatXSignature(object):
         return self._volume.infile.read(size)
 
     def read_u8(self):
-        return struct.unpack(self._volume.endian_fmt + 'B', self.read(1))[0]
+        return struct.unpack(self.endian + 'B', self.read(1))[0]
 
     def read_u16(self):
-        return struct.unpack(self._volume.endian_fmt + 'H', self.read(2))[0]
+        return struct.unpack(self.endian + 'H', self.read(2))[0]
 
     def read_u32(self):
-        return struct.unpack(self._volume.endian_fmt + 'L', self.read(4))[0]
+        return struct.unpack(self.endian + 'I', self.read(4))[0]
 
     def read_u64(self):
-        return struct.unpack(self._volume.endian_fmt + 'Q', self.read(8))[0]
+        return struct.unpack(self.endian + 'Q', self.read(8))[0]
 
     def read_float(self):
-        return struct.unpack(self._volume.endian_fmt + 'f', self.read(4))[0]
+        return struct.unpack(self.endian + 'f', self.read(4))[0]
 
     def read_double(self):
-        return struct.unpack(self._volume.endian_fmt + 'd', self.read(8))[0]
+        return struct.unpack(self.endian + 'd', self.read(8))[0]
 
     def read_cstring(self):
-        str = []
+        s = []
         while True:
             c = self.read(1)
             if c == chr(0):
-                return "".join(str)
-            str.append(c)
+                return "".join(s)
+            s.append(c)
+
+    def read_wstring(self):
+        pass
+
+    def set_endian(self, endian):
+        self.endian = endian
 
     def get_file_name(self):
         file_name = self.name
-        if file_name == None:
+        if file_name is None:
             # TODO: use file extension instead of classname
             if not hasattr(self.__class__, 'Unnamed_Counter'):
                 self.__class__.Unnamed_Counter = 1
@@ -64,7 +72,7 @@ class FatXSignature(object):
         file_name = self.get_file_name()
         whole_path = path + '/' + file_name
         with open(whole_path, 'wb') as f:
-            if (self.length != 0 and self.length < 0xffffffff):
+            if self.length != 0 and self.length < 0xffffffff:
                 self.seek(0)
                 data = self.read(self.length)
                 f.write(data)
@@ -100,6 +108,7 @@ class XBESignature(FatXSignature):
         debug_file_name = self.read_cstring()
         self.name = debug_file_name.split('.exe')[0] + '.xbe'
 
+
 class LiveSignature(FatXSignature):
     def test(self):
         if self.read(4) == 'LIVE':
@@ -109,15 +118,22 @@ class LiveSignature(FatXSignature):
     def parse(self):
         self.length = 0
 
+
 class PDBSignature(FatXSignature):
     def test(self):
-        magic = 'Microsoft C/C++ MSF 7.00'
-        if self.read(len(magic)) == magic:
+        magic = 'Microsoft C/C++ MSF 7.00\r\n\x1A\x44\x53\0\0\0'
+        if self.read(0x20) == magic:
             return True
         return False
 
     def parse(self):
-        self.length = 0
+        self.set_endian('<')
+        self.seek(0x20)
+        block_size = self.read_u32()
+        self.seek(0x28)
+        num_blocks = self.read_u32()
+        self.length = block_size * num_blocks
+
 
 class XEXSignature(FatXSignature):
     def test(self):
@@ -131,8 +147,8 @@ class XEXSignature(FatXSignature):
         header_count = self.read_u32()
         file_name_offset = None
         for x in xrange(header_count):
-            id = self.read_u32()
-            if id == 0x000183FF:
+            xid = self.read_u32()
+            if xid == 0x000183FF:
                 file_name_offset = self.read_u32()
             else:
                 self.read_u32()
@@ -142,16 +158,31 @@ class XEXSignature(FatXSignature):
             self.seek(file_name_offset + 4)
             self.name = self.read_cstring()
 
+
 class PESignature(FatXSignature):
     def test(self):
-        if self.read(2) == 'MZ':
+        if self.read(4) == 'MZ\x90\0':
             return True
         return False
 
     def parse(self):
-        self.seek(0x3C) # offset to PE Header
+        self.set_endian('<')
+        self.seek(0x3C)  # offset to PE Header
+        lfanew = self.read_u32()
+        self.seek(lfanew)
+        sign = self.read_u32()
+        if sign != 0x00004550:  # 'PE\0\0'
+            return
+        self.seek(lfanew + 0x6)
+        nsec = self.read_u16()  # NumberOfSections
+        last_sec_off = (lfanew + 0xF8) + ((nsec - 1) * 0x28)
+        self.seek(last_sec_off + 0x10)
+        sec_len = self.read_u32()
+        self.seek(last_sec_off + 0x14)
+        sec_off = self.read_u32()
+        self.length = sec_len + sec_off
         return
+
 
 # this should be handled by main module
 all_signatures = [a_signature for a_signature in FatXSignature.__subclasses__()]
-

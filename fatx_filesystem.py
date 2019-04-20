@@ -1,16 +1,58 @@
 import struct
 import os
 import time
-from datetime import datetime
+from datetime import datetime, date
 
+""" TODO:
+    (From leftmost bit to rightmost bit)
+      Xbox Original Format:
+        07:Year
+        04:Month
+        05:Day
+        05:Hour
+        06:Minute
+        05:DoubleSeconds
+      Xbox 360 Format (OLD):
+        05:DoubleSeconds
+        06:Minute
+        05:Hour
+        05:Day
+        04:Month
+        07:Year
+      Xbox 360 Format (NEW):
+        07:Year
+        04:Month
+        05:Day
+        05:Hour
+        06:Minute
+        05:DoubleSeconds
+        
+"""
 class FatXTimeStamp(object):
     __slots__ = ('time')
     def __init__(self, time_stamp):
         self.time = time_stamp
 
     def __str__(self):
-        return str(datetime(year=self.year, month=self.month, day=self.day,
+        return '{}/{}/{} {}:{:02d}:{:02d}'.format(
+                self.month, self.day, self.year,
+                self.hour, self.min, self.sec
+            )
+        '''
+        try:
+            # TODO: think of a reliable way of detecting proto X360 timestamps
+            if self.year > date.today().year:
+                raise Exception
+            return str(datetime(year=self.year, month=self.month, day=self.day,
                             hour=self.hour, minute=self.min, second=self.sec))
+        except:
+            return str(datetime(year=((self.time & 0xffff) & 0x7f) + 2000,
+                                month=((self.time & 0xffff) >> 7) & 0xf,
+                                day=((self.time & 0xffff) >> 0xb),
+                                hour=((self.time >> 16) & 0x1f),
+                                minute=((self.time >> 16) >> 5) & 0x3f,
+                                second=((self.time >> 16) >> 10) & 0xfffe))
+        '''
 
     @property
     def year(self):
@@ -56,13 +98,18 @@ FATX_PAGE_SIZE      = 0x1000
 FATX_SIGNATURE      = 0x58544146    # "FATX"
 FATX_FILE_NAME_LEN  = 42
 
+FATX_MAX_DIRECTORY_SIZE = 0x40000
+
 FILE_ATTRIBUTE_READONLY     = 0x00000001
 FILE_ATTRIBUTE_HIDDEN       = 0x00000002
 FILE_ATTRIBUTE_SYSTEM       = 0x00000004
 FILE_ATTRIBUTE_DIRECTORY    = 0x00000010
 FILE_ATTRIBUTE_ARCHIVE      = 0x00000020
-FILE_ATTRIBUTE_DEVICE       = 0x00000040
-FILE_ATTRIBUTE_NORMAL       = 0x00000080
+
+# evaluates to 0x37
+VALID_FILE_ATTRIBUTES = FILE_ATTRIBUTE_READONLY | \
+    FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | \
+    FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_ARCHIVE
 
 DIRENT_NEVER_USED   = 0x00
 DIRENT_DELETED      = 0xE5
@@ -72,7 +119,7 @@ class FatXDirent:
     def __init__(self, data, volume):
         (self.file_name_length,
          self.file_attributes,
-         self.file_name,
+         self.file_name_bytes,
          self.first_cluster,
          self.file_size,
          self.creation_time_i,
@@ -82,6 +129,7 @@ class FatXDirent:
         self.children = []
         self.parent = None
         self.volume = volume
+        self.file_name = ''
         self.creation_time = None
         self.last_write_time = None
         self.last_access_time = None
@@ -98,9 +146,9 @@ class FatXDirent:
         self.last_access_time = ts(self.last_access_time_i)
 
         if self.file_name_length == DIRENT_DELETED:
-            self.file_name = self.file_name.split('\xff')[0]
+            self.file_name = self.file_name_bytes.split('\xff')[0]
         else:
-            self.file_name = self.file_name[:self.file_name_length]
+            self.file_name = self.file_name_bytes[:self.file_name_length]
 
     @classmethod
     def from_file(cls, file, volume):
@@ -114,6 +162,20 @@ class FatXDirent:
         for dirent in stream:
             dirent.parent = self
             self.children.append(dirent)
+
+    def add_child(self, child):
+        """ This child belongs to this dirent. """
+        if not self.is_directory():
+            raise Exception("Only directories can have children!")
+
+        self.children.append(child)
+
+    def set_parent(self, parent):
+        """ This dirent belongs to this parent dirent. """
+        self.parent = parent
+
+    def has_parent(self):
+        return self.parent is not None
 
     def is_file(self):
         if self.file_attributes & FILE_ATTRIBUTE_DIRECTORY:
@@ -145,8 +207,9 @@ class FatXDirent:
 
     ###########################################
     # TODO: need to move these to FatXVolume
-    # TODO: support files marked as deleted
     def _set_ts(self, path):
+        # TODO: creation_time only supported on Windows
+        # TODO: trying to avoid using win32file to avoid external dependencies
         ats = self.last_access_time
         mts = self.last_write_time
         atime = datetime(year=ats.year,
@@ -182,7 +245,7 @@ class FatXDirent:
 
         try:
             self._set_ts(path)
-        except ValueError:
+        except:
             print 'Failed to set timestamps.'
 
     def _write_dir(self, path):
@@ -233,10 +296,6 @@ class FatXDirent:
             attributes += 'DIRECTORY '
         if self.file_attributes & FILE_ATTRIBUTE_ARCHIVE:
             attributes += 'ARCHIVE '
-        if self.file_attributes & FILE_ATTRIBUTE_DEVICE:
-            attributes += 'DEVICE '
-        if self.file_attributes & FILE_ATTRIBUTE_NORMAL:
-            attributes += 'NORMAL '
 
         return attributes
 
@@ -278,6 +337,10 @@ class FatXVolume(object):
         self.FATX_FORMAT = self.endian_fmt + 'LLLL'
         self.DIRENT_FORMAT = self.endian_fmt + 'BB42sLLLLL'
         self.ts_format = XTimeStamp if byteorder == '<' else X360TimeStamp
+        self._root = []
+
+    def __del__(self):
+        self.infile.close()
 
     def mount(self):
         # read volume metadata
@@ -339,13 +402,13 @@ class FatXVolume(object):
         if self.signature != FATX_SIGNATURE:
             raise ValueError("Invalid FATX signature!")
 
-    def get_cluster_chain(self, cluster_map):
+    def get_dirent_buffer(self, cluster_map):
         buffer = ''
         for cluster in cluster_map:
             buffer += self.read_cluster(cluster)
         return buffer
 
-    def get_cluster_chain_map(self, first_cluster):
+    def get_cluster_chain(self, first_cluster):
         chain = []
         cluster = first_cluster
         chain.append(first_cluster)
@@ -368,6 +431,7 @@ class FatXVolume(object):
         fat_length = struct.calcsize(fat_format)
         fat_table  = self.infile.read(fat_length)
         return [entry for entry in struct.unpack(fat_format, fat_table)]
+
 
     def calculate_offsets(self):
         # reserved for volume metadata
@@ -396,7 +460,7 @@ class FatXVolume(object):
         for dirent in stream:
             if dirent.is_directory() and \
                     not dirent.is_deleted():  # dirent stream not guaranteed if deleted.
-                chain_map = self.get_cluster_chain_map(dirent.first_cluster)
+                chain_map = self.get_cluster_chain(dirent.first_cluster)
 
                 for cluster in chain_map:
                     dirent_stream = self.read_directory_stream(
@@ -413,6 +477,7 @@ class FatXVolume(object):
         for _ in xrange(256):
             dirent = FatXDirent.from_file(self.infile, self)
 
+            # TODO: Perhaps I should also do this before creating the object.
             # check for end of dirent stream
             if (dirent.file_name_length == DIRENT_NEVER_USED or
                 dirent.file_name_length == DIRENT_NEVER_USED2):
@@ -424,7 +489,7 @@ class FatXVolume(object):
 
     def print_volume_metadata(self):
         def print_aligned(header, value=''):
-            print "{:<26} {}".format(header, value)
+            print("{:<26} {}".format(header, value))
 
         print_aligned("Signature:", self.signature)
         print_aligned("SerialNumber:", self.serial_number)
