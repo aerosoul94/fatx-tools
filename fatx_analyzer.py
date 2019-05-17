@@ -1,9 +1,15 @@
-from fatx_filesystem import FatXDirent, VALID_FILE_ATTRIBUTES
+from fatx_filesystem import FatXDirent, FATX_SIGNATURE, VALID_FILE_ATTRIBUTES
 import time
 import os
 import string
 import logging
 import json
+import struct
+
+try:
+    xrange
+except NameError:
+    xrange = range
 
 from datetime import date, datetime
 
@@ -11,6 +17,7 @@ __all__ = ['FatXOrphan', 'FatXAnalyzer']
 
 VALID_CHARS = set(string.ascii_letters + string.digits + '!#$%&\'()-.@[]^_`{}~ ' + '\xff')
 LOG = logging.getLogger('FATX.Analyzer')
+
 
 class FatXOrphan(FatXDirent):
     """ An orphaned directory entry. """
@@ -110,11 +117,12 @@ class FatXOrphan(FatXDirent):
 
 class FatXAnalyzer:
     """ Analyzes a FatX partition for deleted files. """
-    def __init__(self, volume):
+    def __init__(self, volume, full_scan=False):
         self.volume = volume
         self.roots = []      # List[FatXOrphan]
         self.orphanage = []  # List[FatXOrphan]
         self.found_signatures = []
+        self.full_scan = full_scan
         self.current_block = 0
 
     # TODO: add constructor for finding files with corrupted FatX volume metadata
@@ -129,9 +137,6 @@ class FatXAnalyzer:
     def get_valid_sigs(self):
         """ List of found signatures. """
         return self.found_signatures
-
-    def perform_volume_analysis(self, interval=0x1000):
-        pass
 
     def perform_signature_analysis(self, signatures, interval=0x200, length=0):
         """ Searches for file signatures. """
@@ -191,6 +196,9 @@ class FatXAnalyzer:
         for cluster in range(1, max_clusters):
             self.current_block = cluster
             cache = self.volume.read_cluster(cluster)
+            if len(cache) != 0x4000:
+                LOG.warn("Failed to read cluster %i" % cluster)
+                continue
 
             for x in range(256):
                 offset = x * 0x40
@@ -287,4 +295,66 @@ class FatXAnalyzer:
                 partition['roots'].append(self.save_dirent(root))
             json.dump(partition, outfile, indent=1)
 
+    # TODO: recover fatx volumes
+    def perform_volume_analysis(self):
+        infile = self.volume.infile
+        infile.seek(0, 2)
+        inlen = infile.tell()
+        infile.seek(0, 1)
 
+        remnants = []
+
+        sig_fmt = self.volume.endian_fmt + "L"
+
+        off = 0
+        while off < inlen:
+            infile.seek(off)
+            sig = struct.unpack(sig_fmt, infile.read(4))
+            if sig == FATX_SIGNATURE:
+                # TODO: check if not an already recognized partition
+                remnants.append(off)
+                pass
+
+            off += 0x200
+
+        # check for overlap to avoid scanning the same dirents more than once
+        # recover all dirents relative to the current partition
+        pass
+
+    def guess_fat_entry_size(self):
+        # make sure that first entry is MEDIA and second is LAST
+        reserved_fat_entry = struct.unpack(self.volume.endian_fmt + 'L', self.volume.infile.read(4))[0]
+        if reserved_fat_entry != 0xfffffff8:
+            reserved_fat_entry = struct.unpack(self.volume.endian_fmt + 'H', self.volume.infile.read(2))[0]
+            if reserved_fat_entry == 0xfff8:
+                self.fat16x = True
+        elif reserved_fat_entry == 0xfffffff8:
+            self.fat16x = False
+        else:
+            return False
+        return True
+
+    def guess_root_dirent_offset(self):
+        # use FatXOrphan to find first dirent.
+        return 0
+
+    def calculate_partition_size(self):
+        fat_offset = self.volume.infile.tell()
+
+        # is this 16 or 32 bit?
+        fat_entry_size = self.guess_fat_entry_size()
+
+        # find root dirent
+        root_offset = self.guess_root_dirent_offset()
+
+        # bytes_per_fat should be aligned to nearest page
+        bytes_per_fat = root_offset - fat_offset
+
+        # now just do reverse calculation
+        max_cluster = bytes_per_fat / fat_entry_size
+        length = (max_cluster - 1) * self.volume.bytes_per_cluster
+
+        # make sure partition length doesn't extend past end of drive
+        # round to nearest cluster
+        drive_length = 0
+        length = min(drive_length - self.volume.offset, length)

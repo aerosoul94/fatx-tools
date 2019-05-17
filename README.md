@@ -1,12 +1,15 @@
 # fatx-tools
-A set of data recovery tools for the Xbox Original and Xbox 360 consoles.
+These are set of data recovery tools for the Xbox Original and Xbox 360 consoles.
 
-These tools were written under a Python 2.7.16 environment.
+* These tools are still a work in progress!
+* These tools were written under a Python 2.7.16 environment.
+* It is not yet compatible with Python 3.
+* Usage instructions will eventually be written.
 
-**These tools are still a work in progress! Please help by reporting bugs. Usage instructions will eventually be written.**
+ Please feel free to report bugs or submit pull requests.
 
 ## TODO
-- [ ] Create a GUI
+- [X] Create a GUI
 - [ ] Package as native executable
 - [ ] **Optimize, refactor, and document!**
 - [ ] Create Wiki pages

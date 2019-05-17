@@ -1,7 +1,15 @@
 import struct
 import os
 import time
-from datetime import datetime, date
+import logging
+from datetime import datetime
+
+try:
+    xrange
+except NameError:
+    xrange = range
+
+LOG = logging.getLogger("FATX.FileSystem")
 
 """ TODO:
     (From leftmost bit to rightmost bit)
@@ -28,17 +36,16 @@ from datetime import datetime, date
         05:DoubleSeconds
         
 """
+
+
 class FatXTimeStamp(object):
-    __slots__ = ('time')
+    __slots__ = ('time',)
+
     def __init__(self, time_stamp):
         self.time = time_stamp
 
     def __str__(self):
-        return '{}/{}/{} {}:{:02d}:{:02d}'.format(
-                self.month, self.day, self.year,
-                self.hour, self.min, self.sec
-            )
-        '''
+        """
         try:
             # TODO: think of a reliable way of detecting proto X360 timestamps
             if self.year > date.today().year:
@@ -52,38 +59,49 @@ class FatXTimeStamp(object):
                                 hour=((self.time >> 16) & 0x1f),
                                 minute=((self.time >> 16) >> 5) & 0x3f,
                                 second=((self.time >> 16) >> 10) & 0xfffe))
-        '''
+        """
+        return '{}/{}/{} {}:{:02d}:{:02d}'.format(
+                self.month, self.day, self.year,
+                self.hour, self.min, self.sec
+            )
 
     @property
     def year(self):
         year = (self.time & 0xFE000000) >> 25
         return year
+
     @property
     def month(self):
         month = (self.time & 0x1E00000) >> 21
         return month
+
     @property
     def day(self):
         day = (self.time & 0x1F0000) >> 16
         return day
+
     @property
     def hour(self):
         hour = (self.time & 0xF800) >> 11
         return hour
+
     @property
     def min(self):
         min = (self.time & 0x7E0) >> 5
         return min
+
     @property
     def sec(self):
         sec = (self.time & 0x1F) * 2
         return sec
+
 
 class X360TimeStamp(FatXTimeStamp):
     @property
     def year(self):
         year = (((self.time & 0xFE000000) >> 25) + 1980)
         return year
+
 
 class XTimeStamp(FatXTimeStamp):
     @property
@@ -114,6 +132,7 @@ VALID_FILE_ATTRIBUTES = FILE_ATTRIBUTE_READONLY | \
 DIRENT_NEVER_USED   = 0x00
 DIRENT_DELETED      = 0xE5
 DIRENT_NEVER_USED2  = 0xFF
+
 
 class FatXDirent:
     def __init__(self, data, volume):
@@ -246,7 +265,7 @@ class FatXDirent:
         try:
             self._set_ts(path)
         except:
-            print 'Failed to set timestamps.'
+            print("Failed to set timestamps.")
 
     def _write_dir(self, path):
         if not os.path.exists(path):
@@ -271,7 +290,7 @@ class FatXDirent:
             prefix = 'FILE '
         if self.is_deleted():
             prefix = 'DEL  '
-        print prefix + whole_path
+        print(prefix + whole_path)
         if self.is_directory():
             # create directory
             self.write(whole_path)
@@ -309,14 +328,14 @@ class FatXDirent:
         else:
             prefix = 'FILE '
 
-        print prefix + whole_path
+        print(prefix + whole_path)
         if self.is_directory() and not self.is_deleted():
             for child in self.children:
                 child.print_dirent(whole_path)
 
     def print_fields(self):
         def print_aligned(header, value):
-            print "{:<26} {}".format(header, value)
+            print("{:<26} {}".format(header, value))
 
         print_aligned("FileNameLength:", self.file_name_length)
         print_aligned("FileName:", self.file_name)
@@ -326,6 +345,7 @@ class FatXDirent:
         print_aligned("CreationTime:", str(self.creation_time))
         print_aligned("LastWriteTime:", str(self.last_write_time))
         print_aligned("LastAccessTime:", str(self.last_access_time))
+
 
 class FatXVolume(object):
     def __init__(self, file, name, offset, length, byteorder):
@@ -343,6 +363,8 @@ class FatXVolume(object):
         self.infile.close()
 
     def mount(self):
+        LOG.info("Mounting %s", self.name)
+
         # read volume metadata
         self.read_volume_metadata()
 
@@ -380,7 +402,7 @@ class FatXVolume(object):
         self.infile.seek(self.cluster_to_physical_offset(cluster))
 
     def byte_offset_to_cluster(self, offset):
-        return (offset / self.bytes_per_cluster) + 1
+        return (offset // self.bytes_per_cluster) + 1
 
     def byte_offset_to_physical_offset(self, offset):
         return self.offset + offset
@@ -409,16 +431,25 @@ class FatXVolume(object):
         return buffer
 
     def get_cluster_chain(self, first_cluster):
-        chain = []
-        cluster = first_cluster
-        chain.append(first_cluster)
-        max_cluster = (0xfff0 if self.fat16x else 0xfffffff0)
-        fat_entry = self.file_allocation_table[cluster]
-        while fat_entry <= max_cluster and fat_entry != 0:
-            # should check that its not reserved, freed,
-            # and less than max_clusters for volume.
-            chain.append(fat_entry)
+        chain = [first_cluster]
+        fat_entry = first_cluster
+        reserved_indexes = (0xfff0 if self.fat16x else 0xfffffff0)
+        while True:
+            # break when reserved entry found
+            if fat_entry <= reserved_indexes:
+                break
+
+            if fat_entry == 0:
+                LOG.info("BAIL! Found NULL fat entry!")
+                return [first_cluster]
+
+            if fat_entry > len(self.file_allocation_table):
+                LOG.info("BAIL! FAT entry index {} greater than FAT size {}!".format(fat_entry,
+                                                                                  len(self.file_allocation_table)))
+                return [first_cluster]
+
             fat_entry = self.file_allocation_table[fat_entry]
+            chain.append(fat_entry)
         return chain
 
     def read_file_allocation_table(self):
@@ -432,7 +463,6 @@ class FatXVolume(object):
         fat_table  = self.infile.read(fat_length)
         return [entry for entry in struct.unpack(fat_format, fat_table)]
 
-
     def calculate_offsets(self):
         # reserved for volume metadata
         reserved_bytes = 0x1000
@@ -440,7 +470,7 @@ class FatXVolume(object):
         # most commonly 0x4000
         self.bytes_per_cluster = self.sectors_per_cluster * FATX_SECTOR_SIZE
         
-        self.max_clusters = (self.length / self.bytes_per_cluster) + 1  # +1 is reserved_fat_entries
+        self.max_clusters = (self.length // self.bytes_per_cluster) + 1  # +1 is reserved_fat_entries
         if self.max_clusters < 0xfff0:
             bytes_per_fat = self.max_clusters * 2
             self.fat16x = True
@@ -458,8 +488,10 @@ class FatXVolume(object):
 
     def populate_dirent_stream(self, stream):
         for dirent in stream:
+            LOG.info("%s", dirent.get_full_path())
             if dirent.is_directory() and \
                     not dirent.is_deleted():  # dirent stream not guaranteed if deleted.
+
                 chain_map = self.get_cluster_chain(dirent.first_cluster)
 
                 for cluster in chain_map:
@@ -496,7 +528,7 @@ class FatXVolume(object):
         print_aligned("SectorsPerCluster:", "{} (0x{:x} bytes)".format(
             self.sectors_per_cluster, self.sectors_per_cluster * FATX_SECTOR_SIZE))
         print_aligned('RootDirFirstCluster:', self.root_dir_first_cluster)
-        print
+        print("")
 
         print_aligned("Calculated Offsets:")
         print_aligned("PartitionOffset:", "0x{:x}".format(self.offset))
@@ -504,4 +536,4 @@ class FatXVolume(object):
             self.byte_offset_to_physical_offset(self.fat_byte_offset), self.fat_byte_offset))
         print_aligned("FileAreaByteOffset:", "0x{:x} (+0x{:x})".format(
             self.byte_offset_to_physical_offset(self.file_area_byte_offset), self.file_area_byte_offset))
-        print
+        print("")

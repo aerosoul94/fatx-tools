@@ -1,5 +1,9 @@
 import struct
 
+try:
+    xrange
+except NameError:
+    xrange = range
 
 class FatXSignature(object):
     def __init__(self, offset, volume):

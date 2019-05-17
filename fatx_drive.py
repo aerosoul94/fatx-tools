@@ -14,6 +14,16 @@ x_signatures = [XBESignature,
 DRIVE_XBOX = 0
 DRIVE_X360 = 1
 
+"""
+TODO: G5 X360 Kernel
+Partition0: 0xA46000, 0x2542990000
+Partition1: 0xAC6000, 0xA00000000
+Partition2: 0xA00AC6000, 0x80000000
+MuEmulation0: 0xA80AC6000, 0x4000000
+MuEmulation1: 0xA84AC6000, 0x4000000
+Partition3: 0xA88AC6000, 0x1ABA910000
+"""
+
 class FatXDrive(object):
     def __init__(self, file):
         def read_u32(f):
@@ -72,6 +82,7 @@ class FatXDrive(object):
                 cache1_length = read_u32(file)
 
                 # 2776A0000 F288F2000 2856A0000 F1A8F2000
+                self.add_partition("Test", 0x130EB0000, 0x1AC1AC4000)
                 self.add_partition("SystemPartition", shell_offset, shell_length)
                 #self.add_partition("Partition1", 0x2776A0000, 0xF288F2000)
                 self.add_partition("Partition1", data_offset, data_length)
@@ -114,4 +125,4 @@ class FatXDrive(object):
         print("{:<6} {:<18} {}".format("Index", "Offset", "Length"))
         for i, partition in enumerate(self.partitions):
             print ("{:<6} {:016x} {:016x}".format(i + 1, partition.offset, partition.length))
-        print()
+        print("")
