@@ -82,7 +82,7 @@ class FatXDrive(object):
                 cache1_length = read_u32(file)
 
                 # 2776A0000 F288F2000 2856A0000 F1A8F2000
-                self.add_partition("Test", 0x130EB0000, 0x1AC1AC4000)
+                #self.add_partition("Test", 0x130EB0000, 0x1AC1AC4000)
                 self.add_partition("SystemPartition", shell_offset, shell_length)
                 #self.add_partition("Partition1", 0x2776A0000, 0xF288F2000)
                 self.add_partition("Partition1", data_offset, data_length)
