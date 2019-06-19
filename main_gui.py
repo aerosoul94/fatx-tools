@@ -511,7 +511,7 @@ def main():
     root.title('FatX-Recover')
     root.minsize(1200, 720)
 
-    """
+    '''
     root.wm_title("FatX-Recover")
     # set background color
     root['bg'] = 'grey'
@@ -531,7 +531,7 @@ def main():
     s.configure('Treeview.Heading', background='grey',
                 foreground='white',
                 relief='flat')
-    """
+    '''
     root.mainloop()
 
 

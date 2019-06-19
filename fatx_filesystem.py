@@ -11,7 +11,7 @@ except NameError:
 
 LOG = logging.getLogger("FATX.FileSystem")
 
-""" TODO:
+''' TODO:
     (From leftmost bit to rightmost bit)
       Xbox Original Format:
         07:Year
@@ -33,9 +33,8 @@ LOG = logging.getLogger("FATX.FileSystem")
         05:Day
         05:Hour
         06:Minute
-        05:DoubleSeconds
-        
-"""
+        05:DoubleSeconds     
+'''
 
 
 class FatXTimeStamp(object):
@@ -45,7 +44,7 @@ class FatXTimeStamp(object):
         self.time = time_stamp
 
     def __str__(self):
-        """
+        '''
         try:
             # TODO: think of a reliable way of detecting proto X360 timestamps
             if self.year > date.today().year:
@@ -59,7 +58,7 @@ class FatXTimeStamp(object):
                                 hour=((self.time >> 16) & 0x1f),
                                 minute=((self.time >> 16) >> 5) & 0x3f,
                                 second=((self.time >> 16) >> 10) & 0xfffe))
-        """
+        '''
         return '{}/{}/{} {}:{:02d}:{:02d}'.format(
                 self.month, self.day, self.year,
                 self.hour, self.min, self.sec
@@ -249,18 +248,17 @@ class FatXDirent:
 
     def _write_file(self, path):
         fat = self.volume.file_allocation_table
+        max_cluster = 0xfff0 if self.volume.fat16x else 0xfffffff0
         cluster = self.first_cluster
-        buffer = ''
-        # TODO: handle invalid clusters
-        while True:
-            buffer += self.volume.read_cluster(cluster)
-            if cluster >= (0xfff0 if self.volume.fat16x else 0xfffffff0):
-                break
-            cluster = fat[cluster]
-
-        file = open(path, 'wb')
-        file.write(buffer[:self.file_size])
-        file.close()
+        with open(path, 'wb') as f:
+            bufsize = self.volume.bytes_per_cluster
+            remains = self.file_size
+            while cluster <= max_cluster:
+                buf = self.volume.read_cluster(cluster)
+                wlen = min(remains, bufsize)
+                f.write(buf[:wlen])
+                remains -= wlen
+                cluster = fat[cluster]
 
         try:
             self._set_ts(path)

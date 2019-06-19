@@ -14,7 +14,7 @@ x_signatures = [XBESignature,
 DRIVE_XBOX = 0
 DRIVE_X360 = 1
 
-"""
+'''
 TODO: G5 X360 Kernel
 Partition0: 0xA46000, 0x2542990000
 Partition1: 0xAC6000, 0xA00000000
@@ -22,7 +22,7 @@ Partition2: 0xA00AC6000, 0x80000000
 MuEmulation0: 0xA80AC6000, 0x4000000
 MuEmulation1: 0xA84AC6000, 0x4000000
 Partition3: 0xA88AC6000, 0x1ABA910000
-"""
+'''
 
 class FatXDrive(object):
     def __init__(self, file):
