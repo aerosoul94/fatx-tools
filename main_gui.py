@@ -222,8 +222,10 @@ class DrivePanel(ttk.Frame):
         partition_node = self.tree.selection()[0]
         partition = self.partition_nodes[partition_node]
         self.analyzer = FatXAnalyzer(partition)
+        # TODO: this is nasty, don't do this
+        signatures = x360_signatures if self.analyzer.volume.endian_fmt == '>' else x_signatures
 
-        self.thread = self.SignatureScanner(self.analyzer, signatures=x360_signatures)
+        self.thread = self.SignatureScanner(self.analyzer, signatures=signatures)
         self.progress_bar['maximum'] = self.analyzer.volume.length / 0x200  # TODO: analyzer.get_interval()
         self.timer0 = time.time()
         self.thread.start()
@@ -376,7 +378,7 @@ class RecoverPanel(ttk.Frame):
             self.recover_cluster(item, directory)
         else:
             # this is a file or directory
-            dirent.rescue(directory)
+            dirent.recover(directory)
         self.master.bell()
 
     def expand_all(self):
@@ -451,8 +453,9 @@ class RecoverPanel(ttk.Frame):
     def add_entries(self, sign_entries):
         self.tree.delete(*self.tree.get_children())
         for entry in sign_entries:
-            byte_size = '%d bytes' % entry.file_length
-            self.tree.insert('', tk.END, text=entry.get_file_name(), values=(byte_size,''))
+            byte_size = '%d bytes' % entry.length
+            entry_node = self.tree.insert('', tk.END, text=entry.get_file_name(), values=(byte_size, ''))
+            self.orphan_nodes[entry_node] = entry
 
 
 class MainFrame(ttk.Frame):

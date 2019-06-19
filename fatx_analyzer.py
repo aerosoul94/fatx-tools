@@ -81,7 +81,7 @@ class FatXOrphan(FatXDirent):
     def rescue_dir(self, path):
         pass
 
-    def rescue(self, path):
+    def recover(self, path):
         """ This dumps without relying on the FAT. """
         whole_path = path + '/' + self.file_name
         self.volume.seek_to_cluster(self.first_cluster)

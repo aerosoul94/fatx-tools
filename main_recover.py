@@ -41,7 +41,7 @@ def main_recover(arg):
                         if not os.path.exists(root_dir):
                             os.mkdir(root_dir)
 
-                        root.rescue(root_dir)
+                        root.recover(root_dir)
 
             # signature scanner will go through blocks of data
             # testing various signatures to see if they match
