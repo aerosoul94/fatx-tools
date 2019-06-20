@@ -151,7 +151,7 @@ class DrivePanel(ttk.Frame):
             self.timer1 = time.time()
             print('analysis completed in {} seconds.'.format(self.timer1 - self.timer0))
             self.master.bell()
-            panel = RecoverPanel(self.master)
+            panel = RecoverPanel(self.master, 0)
             self.master.add(panel, text='Analysis results')
             orphans = self.analyzer.get_roots()
             panel.add_orphans(orphans)
@@ -196,7 +196,7 @@ class DrivePanel(ttk.Frame):
             self.timer1 = time.time()
             print('analysis completed in {} seconds.'.format(self.timer1 - self.timer0))
             self.master.bell()
-            panel = RecoverPanel(self.master)
+            panel = RecoverPanel(self.master, 1)
             self.master.add(panel, text='Analysis results')
             orphans = self.analyzer.get_valid_sigs()
             panel.add_entries(orphans)
@@ -311,9 +311,10 @@ class DrivePanel(ttk.Frame):
 
 
 class RecoverPanel(ttk.Frame):
-    def __init__(self, master):
+    def __init__(self, master, mode):
         ttk.Frame.__init__(self, master)
         self.master = master
+        self.mode = mode
         self.pack()
         # Add offset
         tree_columns = ('cluster', 'filesize', 'cdate', 'mdate', 'adate')
@@ -350,21 +351,27 @@ class RecoverPanel(ttk.Frame):
     def recover_cluster(self, item, path):
         for child_item in self.tree.get_children(item):
             dirent = self.orphan_nodes[child_item]
-            dirent.rescue(path)
+            dirent.recover(path)
 
     def recover_all(self):
         directory = askdirectory()
         if directory == '':
             return
 
-        for cluster_item in self.tree.get_children():
-            # create directory for this cluster
-            # cluster_item is same as text
-            cluster_path = directory + '/' + cluster_item
-            if not os.path.exists(cluster_path):
-                os.mkdir(cluster_path)
+        if self.mode == 0:
+            for cluster_item in self.tree.get_children():
+                # create directory for this cluster
+                # cluster_item is same as text
+                cluster_path = directory + '/' + cluster_item
+                if not os.path.exists(cluster_path):
+                    os.mkdir(cluster_path)
 
-            self.recover_cluster(cluster_item, cluster_path)
+                self.recover_cluster(cluster_item, cluster_path)
+        elif self.mode == 1:
+            for item in self.tree.get_children():
+                dirent = self.orphan_nodes[item]
+                dirent.recover(directory)
+        self.master.bell()
 
     def recover_orphan(self):
         item = self.tree.selection()[0]

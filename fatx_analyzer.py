@@ -94,7 +94,7 @@ class FatXOrphan(FatXDirent):
                     LOG.exception('Failed to create directory: %s', whole_path)
                     return
             for dirent in self.children:
-                dirent.rescue(whole_path)
+                dirent.recover(whole_path)
         else:
             try:
                 bufsize = 0x100000
