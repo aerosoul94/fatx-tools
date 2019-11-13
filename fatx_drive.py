@@ -25,6 +25,13 @@ Partition3: 0xA88AC6000, 0x1ABA910000
 '''
 
 class FatXDrive(object):
+    """Representation of a drive which contains FATX volumes.
+
+    TODO: rewrite for handling compressed and physical images.
+
+    Args:
+        file (file): Image file object.
+    """
     def __init__(self, file):
         def read_u32(f):
             return struct.unpack(self.byteorder + 'L', f.read(4))[0]

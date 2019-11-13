@@ -15,15 +15,22 @@ from datetime import date, datetime
 
 __all__ = ['FatXOrphan', 'FatXAnalyzer']
 
-VALID_CHARS = set(string.ascii_letters + string.digits + '!#$%&\'()-.@[]^_`{}~ ' + '\xff')
+VALID_CHARS = set(string.ascii_letters +
+                  string.digits +
+                  '!#$%&\'()-.@[]^_`{}~ ' +
+                  '\xff')
+
 LOG = logging.getLogger('FATX.Analyzer')
 
 
 class FatXOrphan(FatXDirent):
-    """ An orphaned directory entry. """
-    #@profile
+    """Representation of a dirent that has been been recovered by the analyzer.
+    This class contains unconventional methods used to operate on recovered
+    dirents.
+    """
+    # @profile
     def is_valid(self):
-        """ Checks if this recovered dirent is actually valid. """
+        """Checks if this recovered dirent is actually valid."""
         # TODO: some valid dirents have invalid cluster indexes
         # TODO: warn user that the file will undoubtedly be corrupted
         # check if it points outside of the partition
@@ -72,17 +79,25 @@ class FatXOrphan(FatXDirent):
         return True
 
     def set_cluster(self, cluster):
-        """ This dirent belongs to this cluster. """
+        """ This dirent resides in this cluster. """
         self.cluster = cluster
 
     def set_offset(self, offset):
+        """ This dirent resides at this offset. """
         self.offset = offset
 
     def rescue_dir(self, path):
         pass
 
     def recover(self, path):
-        """ This dumps without relying on the FAT. """
+        """Extracts the file unconventionally by dumping sequential clusters
+        since we cannot rely on the file allocation table.
+
+        This method overrides the conventional recover() method in FatXDirent.
+
+        Args:
+            path (str): Output path.
+        """
         whole_path = path + '/' + self.file_name
         self.volume.seek_to_cluster(self.first_cluster)
         LOG.info('Recovering: %r', whole_path)
@@ -116,7 +131,14 @@ class FatXOrphan(FatXDirent):
 
 
 class FatXAnalyzer:
-    """ Analyzes a FatX partition for deleted files. """
+    """ Implementation of an analyzer that tries to recover files from a FATX
+     volume.
+
+     Args:
+        volume (FatXVolume): Volume that we will perform recovery on.
+        full_scan (bool): (TODO) A full scan will attempt to recover from an
+            entire image rather than just the volume.
+    """
     def __init__(self, volume, full_scan=False):
         self.volume = volume
         self.roots = []      # List[FatXOrphan]
@@ -125,9 +147,10 @@ class FatXAnalyzer:
         self.full_scan = full_scan
         self.current_block = 0
 
-    # TODO: add constructor for finding files with corrupted FatX volume metadata
+    # TODO: add constructor for finding files with corrupted FatX volume
+    #  metadata
     def get_orphanage(self):
-        """ Orphanage contains the list of orphaned dirents. """
+        """ Orphanage contains the list of orphaned (recovered) dirents. """
         return self.orphanage
 
     def get_roots(self):
@@ -147,7 +170,8 @@ class FatXAnalyzer:
         # PAGE_SIZE    = 0x1000  # moderate speed, less effective
         # CLUSTER_SIZE = 0x4000  # high speed, least effective
         if interval not in (1, 0x200, 0x1000, 0x4000):
-            return ValueError("Valid intervals are 1, 0x200, 0x1000, or 0x4000.")
+            return ValueError(
+                "Valid intervals are 1, 0x200, 0x1000, or 0x4000.")
 
         if length == 0 or length > self.volume.length:
             length = self.volume.length
@@ -158,10 +182,10 @@ class FatXAnalyzer:
             offset = index * interval
             for signature in signatures:
                 test = signature(offset, self.volume)
-                # seek to test
+                # seek to test the data
                 self.volume.seek_file_area(offset)
                 if test.test():
-                    # seek to parse
+                    # seek to parse the data
                     self.volume.seek_file_area(offset)
                     test.parse()
                     self.found_signatures.append(test)
@@ -189,8 +213,7 @@ class FatXAnalyzer:
     def recover_orphans(self, max_clusters=0):
         """ Begin search for orphaned dirents. """
         orphans = []
-        if (max_clusters > self.volume.max_clusters or
-            max_clusters == 0):
+        if (max_clusters > self.volume.max_clusters or max_clusters == 0):
             max_clusters = self.volume.max_clusters
 
         for cluster in range(1, max_clusters):
@@ -221,8 +244,10 @@ class FatXAnalyzer:
                 dirent = FatXOrphan(cache[offset:offset+0x40], self.volume)
 
                 if dirent.is_valid():
-                    offset = self.volume.cluster_to_physical_offset(cluster) + offset
-                    LOG.info("%#x: %s (cluster %i)", offset, dirent.file_name, cluster)
+                    offset = self.volume.cluster_to_physical_offset(cluster) \
+                             + offset
+                    LOG.info("%#x: %s (cluster %i)",
+                             offset, dirent.file_name, cluster)
                     dirent.set_cluster(cluster)
                     dirent.set_offset(offset)
                     orphans.append(dirent)
@@ -323,9 +348,11 @@ class FatXAnalyzer:
 
     def guess_fat_entry_size(self):
         # make sure that first entry is MEDIA and second is LAST
-        reserved_fat_entry = struct.unpack(self.volume.endian_fmt + 'L', self.volume.infile.read(4))[0]
+        reserved_fat_entry = struct.unpack(self.volume.endian_fmt + 'L',
+                                           self.volume.infile.read(4))[0]
         if reserved_fat_entry != 0xfffffff8:
-            reserved_fat_entry = struct.unpack(self.volume.endian_fmt + 'H', self.volume.infile.read(2))[0]
+            reserved_fat_entry = struct.unpack(self.volume.endian_fmt + 'H',
+                                               self.volume.infile.read(2))[0]
             if reserved_fat_entry == 0xfff8:
                 self.fat16x = True
         elif reserved_fat_entry == 0xfffffff8:

@@ -69,10 +69,9 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--outputpath", help="Output directory", type=str)
     parser.add_argument("-n", "--index", help="Partition index.", type=int)
     parser.add_argument("-r", "--recover", help="Recover files to output path.", action="store_true")
-    ''' TODO: 
-     - Only print the files found if this flag is set.
-     - Don't use log file. Instead have user redirect stdout to file.
-    '''
+    # TODO:
+    #  - Only print the files found if this flag is set.
+    #  - Don't use log file. Instead have user redirect stdout to file.
     parser.add_argument("-v", "--verbosity", help="Verbose level.", type=str, default="NOTSET")
 
     parser.add_argument("-so", "--scan-orphans", help="Use orphan scanner.", action="store_true")
