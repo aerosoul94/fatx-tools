@@ -1,6 +1,11 @@
 from fatx_drive import FatXDrive
 import argparse
 import os
+import logging
+import sys
+
+
+LOG = logging.getLogger('FATX')
 
 
 def main(arg):
@@ -52,6 +57,25 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--print-partition", help="Print partition volume metadata.", action='store_true')
     parser.add_argument("-r", "--recover", help="Recover files.", action="store_true")
     parser.add_argument("-u", "--undelete", help="Recover files marked as deleted.", action="store_true")
+    parser.add_argument("-v", "--verbosity", help="Verbose level.", type=str, default="NOTSET")
     args = parser.parse_args()
+
+    log_verbosity = [v for k, v in logging.__dict__.items() if k.startswith(args.verbosity.upper())][0]
+
+    _stream = logging.StreamHandler(sys.stdout)
+    _stream.setLevel(logging.INFO)
+    _stream.setFormatter(logging.Formatter('%(levelname).4s: %(message)s'))
+
+    if log_verbosity != logging.NOTSET:
+        _file = logging.FileHandler('log.txt', 'w', 'utf-8')
+        _file.setLevel(logging.DEBUG)
+        _file.setFormatter(
+            logging.Formatter('%(module)s::%(funcName)s::%(lineno)d %(levelname).4s %(asctime)s - %(message)s'))
+        LOG.setLevel(log_verbosity)
+        LOG.addHandler(_file)
+    else:
+        LOG.setLevel(logging.INFO)
+
+    LOG.addHandler(_stream)
 
     main(args)

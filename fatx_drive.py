@@ -1,6 +1,7 @@
 from fatx_filesystem import FatXVolume, FATX_SIGNATURE
 from fatx_signatures import *
 import struct
+import logging
 
 x360_signatures = [XEXSignature,
                    PDBSignature,
@@ -13,6 +14,8 @@ x_signatures = [XBESignature,
 
 DRIVE_XBOX = 0
 DRIVE_X360 = 1
+
+LOG = logging.getLogger('FATX')
 
 '''
 TODO: G5 X360 Kernel
@@ -42,6 +45,8 @@ class FatXDrive(object):
         file.seek(0, 2)
         self.length = file.tell()
         file.seek(0, 0)
+
+        LOG.debug("Drive Length: %016x", self.length)
 
         self.byteorder = '<'
         file.seek(0xABE80000)

@@ -36,6 +36,15 @@ LOG = logging.getLogger("FATX.FileSystem")
         05:DoubleSeconds     
 '''
 
+class OffsetPrinter(object):
+    def __init__(self, method):
+        self.method = method
+
+    def __str__(self):
+        return "{:016x}".format(self.method())
+
+# Cached file.tell()
+POSITION = None
 
 class FatXTimeStamp(object):
     """Representation of a FATX timestamp.
@@ -446,6 +455,12 @@ class FatXVolume(object):
     """
 
     def __init__(self, fo, name, offset, length, byteorder):
+        LOG.debug("Partition Offset: %016x", offset)
+        LOG.debug("Partition Length: %016x", length)
+
+        global POSITION
+        POSITION = OffsetPrinter(fo.tell)
+
         self.infile = fo
         self.name = name
         self.offset = offset
@@ -470,6 +485,8 @@ class FatXVolume(object):
         self.fat16x = False
         self.file_area_byte_offset = 0
 
+        self.debug_log_enabled = LOG.isEnabledFor(logging.DEBUG)
+
     def __del__(self):
         self.infile.close()
 
@@ -482,6 +499,12 @@ class FatXVolume(object):
 
         # calculate file allocation and file area offsets
         self.calculate_offsets()
+
+        if self.debug_log_enabled:
+            LOG.debug("Bytes Per Cluster: %08x", self.bytes_per_cluster)
+            LOG.debug("Max Clusters: %08x", self.max_clusters)
+            LOG.debug("FAT Byte Offset: %08x", self.fat_byte_offset)
+            LOG.debug("FILE Area Byte Offset: %08x", self.file_area_byte_offset)
 
         # get file allocation table (int[])
         self.file_allocation_table = self.read_file_allocation_table()
@@ -520,6 +543,10 @@ class FatXVolume(object):
         self.infile.seek(fat_offset)
         fat_format = construct_fat_format(self.max_clusters)
         fat_length = struct.calcsize(fat_format)
+
+        LOG.debug("FAT Offset: %s", POSITION)
+        LOG.debug("FAT Length: %08x", fat_length)
+
         fat_table = self.infile.read(fat_length)
         return [entry for entry in struct.unpack(fat_format, fat_table)]
 
@@ -680,7 +707,15 @@ class FatXVolume(object):
 
                 chain_map = self.get_cluster_chain(dirent.first_cluster)
 
+                if self.debug_log_enabled:
+                    LOG.debug("Reading directory: %s", dirent.get_full_path())
+                    LOG.debug("Directory First Cluster: %08x", dirent.first_cluster)
+                    LOG.debug("Chain Map: %s", chain_map)
+
                 for cluster in chain_map:
+                    LOG.debug("Reading dirent stream at: %s", POSITION)
+                    LOG.debug("At Cluster: %08x", cluster)
+
                     dirent_stream = self.read_directory_stream(
                         self.cluster_to_physical_offset(cluster))
 
@@ -701,13 +736,17 @@ class FatXVolume(object):
 
         self.infile.seek(offset)
         for _ in xrange(256):
+            LOG.debug(" Reading dirent at: %s", POSITION)
             dirent = FatXDirent.from_file(self)
 
             # TODO: Perhaps I should also do this before creating the object.
             # check for end of dirent stream
             if (dirent.file_name_length == DIRENT_NEVER_USED or
                     dirent.file_name_length == DIRENT_NEVER_USED2):
+                LOG.debug(" End of dirent stream")
                 break
+
+            LOG.debug(" Read dirent: %s", dirent.file_name)
 
             stream.append(dirent)
 

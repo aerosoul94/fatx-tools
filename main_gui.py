@@ -16,6 +16,7 @@ import sys
 import threading
 import time
 import logging
+import argparse
 
 LOG = logging.getLogger("FATX")
 
@@ -501,19 +502,6 @@ class MainFrame(ttk.Frame):
 def main():
     root = tk.Tk()
 
-    _stream = logging.StreamHandler(sys.stdout)
-    _stream.setLevel(logging.INFO)
-    _stream.setFormatter(logging.Formatter('%(levelname).4s: %(message)s'))
-
-    _file = logging.FileHandler("log.txt", "w", "utf-8")
-    _file.setLevel(logging.DEBUG)
-    _file.setFormatter(
-            logging.Formatter('%(module)s::%(funcName)s::%(lineno)d %(levelname).4s %(asctime)s - %(message)s'))
-    LOG.setLevel(logging.DEBUG)
-    LOG.addHandler(_file)
-
-    LOG.addHandler(_stream)
-
     frame = MainFrame(root)
     # if len(sys.argv) > 1:
     #     frame.open_image(sys.argv[1])
@@ -546,4 +534,22 @@ def main():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='GUI for fatx-tools.')
+    parser.add_argument("-v", "--verbose", help="Verbose.", action='store_true')
+    args = parser.parse_args()
+
+    _stream = logging.StreamHandler(sys.stdout)
+    _stream.setLevel(logging.INFO)
+    _stream.setFormatter(logging.Formatter('%(levelname).4s: %(message)s'))
+
+    if args.verbose:
+        _file = logging.FileHandler("log.txt", "w", "utf-8")
+        _file.setLevel(logging.DEBUG)
+        _file.setFormatter(
+            logging.Formatter('%(module)s::%(funcName)s::%(lineno)d %(levelname).4s %(asctime)s - %(message)s'))
+        LOG.setLevel(logging.DEBUG)
+        LOG.addHandler(_file)
+
+    LOG.addHandler(_stream)
+
     main()
