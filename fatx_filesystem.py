@@ -643,8 +643,10 @@ class FatXVolume(object):
         fat_entry = first_cluster
         reserved_indexes = (0xfff0 if self.fat16x else 0xfffffff0)
         while True:
+            fat_entry = self.file_allocation_table[fat_entry]
+            
             # break when reserved entry found
-            if fat_entry <= reserved_indexes:
+            if fat_entry >= reserved_indexes:
                 break
 
             if fat_entry == 0:
@@ -659,7 +661,6 @@ class FatXVolume(object):
                         len(self.file_allocation_table)))
                 return [first_cluster]
 
-            fat_entry = self.file_allocation_table[fat_entry]
             chain.append(fat_entry)
         return chain
 
@@ -713,8 +714,7 @@ class FatXVolume(object):
                     LOG.debug("Chain Map: %s", chain_map)
 
                 for cluster in chain_map:
-                    LOG.debug("Reading dirent stream at: %s", POSITION)
-                    LOG.debug("At Cluster: %08x", cluster)
+                    LOG.debug("Reading Cluster: %08x", cluster)
 
                     dirent_stream = self.read_directory_stream(
                         self.cluster_to_physical_offset(cluster))
@@ -735,6 +735,7 @@ class FatXVolume(object):
         stream = []
 
         self.infile.seek(offset)
+        LOG.debug("Reading dirent stream at: %s", POSITION)
         for _ in xrange(256):
             LOG.debug(" Reading dirent at: %s", POSITION)
             dirent = FatXDirent.from_file(self)

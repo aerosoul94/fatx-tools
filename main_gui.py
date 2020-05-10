@@ -234,7 +234,7 @@ class DrivePanel(ttk.Frame):
         pass
 
     def open_context_menu(self, event):
-        item = self.tree.identify('item', event.x, event.y)
+        item = self.tree.identify('row', event.x, event.y)
         self.tree.selection_set(item)
         self.tree.focus(item)
         if item in self.partition_nodes:
