@@ -1,4 +1,5 @@
-from fatx_drive import FatXDrive
+from fatx.drive.drive import FatXDrive
+
 import argparse
 import os
 import logging

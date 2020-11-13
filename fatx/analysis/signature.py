@@ -1,10 +1,5 @@
 import struct
 
-try:
-    xrange
-except NameError:
-    xrange = range
-
 
 class FatXSignature(object):
     """Base class used to create a file carving signature.
@@ -126,7 +121,7 @@ class FatXSignature(object):
             if not hasattr(self.__class__, 'Unnamed_Counter'):
                 self.__class__.Unnamed_Counter = 1
             file_name = self.__class__.__name__.lower() + \
-                        str(self.__class__.Unnamed_Counter)
+                str(self.__class__.Unnamed_Counter)
             self.__class__.Unnamed_Counter += 1
         return file_name
 
@@ -146,108 +141,6 @@ class FatXSignature(object):
         return "{} at 0x{:x} of length 0x{:x}".format(self.__class__.__name__,
                                                       self._offset,
                                                       self.length)
-
-
-class XBESignature(FatXSignature):
-    def test(self):
-        magic = self.read(4)
-        if magic == 'XBEH':
-            return True
-        return False
-
-    def parse(self):
-        # 0x104: BaseAddress
-        # 0x10c: SizeOfImage
-        # 0x110: SizeOfImageHeader
-        # 0x114: TimeDateStamp
-        # 0x14C: DebugPathName
-        # 0x150: DebugFileName
-        # 0x154: DebugUnicodeFileName
-        self.seek(0x104)
-        base_address = self.read_u32()
-        self.seek(0x10c)
-        self.length = self.read_u32()
-        self.seek(0x150)
-        debug_file_name_offset = self.read_u32()
-        self.seek(debug_file_name_offset - base_address)
-        debug_file_name = self.read_cstring()
-        self.name = debug_file_name.split('.exe')[0] + '.xbe'
-
-
-class LiveSignature(FatXSignature):
-    def test(self):
-        if self.read(4) == 'LIVE':
-            return True
-        return False
-
-    def parse(self):
-        self.length = 0
-
-
-class PDBSignature(FatXSignature):
-    def test(self):
-        magic = 'Microsoft C/C++ MSF 7.00\r\n\x1A\x44\x53\0\0\0'
-        if self.read(0x20) == magic:
-            return True
-        return False
-
-    def parse(self):
-        self.set_endian('<')
-        self.seek(0x20)
-        block_size = self.read_u32()
-        self.seek(0x28)
-        num_blocks = self.read_u32()
-        self.length = block_size * num_blocks
-
-
-class XEXSignature(FatXSignature):
-    def test(self):
-        # TODO: add support for beta XEX's
-        if self.read(4) == 'XEX2':
-            return True
-        return False
-
-    def parse(self):
-        self.seek(0x10)
-        security_offset = self.read_u32()
-        header_count = self.read_u32()
-        file_name_offset = None
-        for x in xrange(header_count):
-            xid = self.read_u32()
-            if xid == 0x000183FF:
-                file_name_offset = self.read_u32()
-            else:
-                self.read_u32()
-        self.seek(security_offset + 4)
-        self.length = self.read_u32()
-        if file_name_offset is not None:
-            self.seek(file_name_offset + 4)
-            self.name = self.read_cstring()
-
-
-class PESignature(FatXSignature):
-    def test(self):
-        if self.read(4) == 'MZ\x90\0':
-            return True
-        return False
-
-    def parse(self):
-        self.set_endian('<')
-        self.seek(0x3C)  # offset to PE Header
-        lfanew = self.read_u32()
-        self.seek(lfanew)
-        sign = self.read_u32()
-        if sign != 0x00004550:  # 'PE\0\0'
-            return
-        self.seek(lfanew + 0x6)
-        nsec = self.read_u16()  # NumberOfSections
-        last_sec_off = (lfanew + 0xF8) + ((nsec - 1) * 0x28)
-        self.seek(last_sec_off + 0x10)
-        sec_len = self.read_u32()
-        self.seek(last_sec_off + 0x14)
-        sec_off = self.read_u32()
-        self.length = sec_len + sec_off
-        return
 
 
 # this should be handled by main module

@@ -9,8 +9,9 @@ except ImportError:
     from tkinter.filedialog import askopenfilename, askdirectory
     import tkinter.messagebox
 
-from fatx_drive import FatXDrive, x_signatures, x360_signatures
-from fatx_analyzer import FatXAnalyzer
+from fatx.drive.drive import FatXDrive, x_signatures, x360_signatures
+from fatx.analysis.metadata_analyzer import FatXAnalyzer
+from fatx.analysis.file_carver import FatXCarver
 import os
 import sys
 import threading
@@ -222,7 +223,7 @@ class DrivePanel(ttk.Frame):
 
         partition_node = self.tree.selection()[0]
         partition = self.partition_nodes[partition_node]
-        self.analyzer = FatXAnalyzer(partition)
+        self.analyzer = FatXCarver(partition)
         # TODO: this is nasty, don't do this
         signatures = x360_signatures if self.analyzer.volume.endian_fmt == '>' else x_signatures
 

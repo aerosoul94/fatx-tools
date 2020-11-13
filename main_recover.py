@@ -3,8 +3,10 @@ import sys
 import os
 import logging
 
-from fatx_analyzer import FatXAnalyzer
-from fatx_drive import FatXDrive, DRIVE_XBOX, DRIVE_X360, x360_signatures, x_signatures
+from fatx.analysis.metadata_analyzer import FatXAnalyzer
+from fatx.analysis.file_carver import FatXCarver
+from fatx.drive.drive import FatXDrive, \
+    DRIVE_X360, DRIVE_XBOX, x360_signatures, x_signatures
 
 
 LOG = logging.getLogger('FATX')
@@ -18,7 +20,6 @@ def main_recover(arg):
         if drive is not None:
             volume = drive.get_partition(arg.index)
             volume.mount()
-            analyzer = FatXAnalyzer(volume)
 
             # orphan scanner will look for anything that looks
             # like a valid DIRENT entry for complete file info
@@ -26,6 +27,7 @@ def main_recover(arg):
                 if arg.recover and not arg.outputpath:
                     raise Exception("Must supply output path if recovering files! (--outputpath)")
 
+                analyzer = FatXAnalyzer(volume)
                 analyzer.perform_orphan_analysis(max_clusters=arg.so_length)
                 analyzer.save_roots(basename)
                 roots = analyzer.get_roots()
@@ -49,6 +51,7 @@ def main_recover(arg):
                 if arg.recover and not arg.outputpath:
                     raise Exception("Must supply output path if recovering files! (--outputpath)")
 
+                analyzer = FatXCarver(volume)
                 if drive.mode == DRIVE_XBOX:
                     analyzer.perform_signature_analysis(x_signatures,
                                                         interval=arg.ss_interval,
